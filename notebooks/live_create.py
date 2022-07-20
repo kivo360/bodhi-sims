@@ -174,8 +174,9 @@ class StorageDB(StateDB):
                     episode=self._ctx.episode,
                     timestamp=self._ctx.timestamp,
                 )
-            )[slot][0],
+            ),
         )
+        print(store_arr)
         _resp = store_arr[0].as_py() if store_arr else None
 
         return _resp
@@ -409,7 +410,7 @@ class Contract:
         self.account = Account("0x123456789012345678901234", 100.0, 0)
         self.storage["principle"] = 100.0
         self.storage["coupon"] = 10.0
-
+        logger.success(type(self.storage["coupon"]))
         self.end = 0.0
 
     @property
@@ -431,6 +432,12 @@ def main():
     clock.reset()
     clock.increment()
     print(clock.step)
+
+    """
+    __setattr__
+    (contract.principle)
+    """
+
     # AgentGym()
     # ctx = StateCtx(
     # #     episode=uuid.uuid4().hex, address="0x123456789012345678901234", timestamp=0
