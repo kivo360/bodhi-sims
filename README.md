@@ -1,6 +1,6 @@
 # Bodhi Simulator Base
 
-A small simulation framework. It uses duckdb to store the state of the simulation. For a primer about [duckdb, check out the documentation](https://duckdb.org/).
+A small simulation framework. It uses duckdb to store the state of the simulation. For a primer about [duckdb, check out the documentation](https://duckdb.org/). The simulator will work like the [Maro Gym simulator](https://maro.readthedocs.io/en/).
 
 
 
@@ -13,7 +13,6 @@ A small simulation framework. It uses duckdb to store the state of the simulatio
   - [ ] - properties for constantly used variables.
     - [ ] - Getting history
     - [ ] - Casting variables
-
 
 ### Requirements
 
