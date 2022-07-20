@@ -1,5 +1,8 @@
 # Bodhi Simulator Base
 
+A small simulation framework. It uses duckdb to store the state of the simulation. For a primer about [duckdb, check out the documentation](https://duckdb.org/).
+
+
 
 ## Getting Started Tasks
 
