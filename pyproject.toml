@@ -7,8 +7,8 @@ authors = ["Kevin H. <kevin@autoworkz.org>"]
 [tool.poetry.dependencies]
 python = ">=3.9,<3.11"
 retworkx = { extras = ["all"], version = "^0.11.0" }
-pydantic = {extras = ["dotenv"], version = "^1.9.1"}
-pyarrow = {extras = ["all"], version = "^8.0.0"}
+pydantic = { extras = ["dotenv"], version = "^1.9.1" }
+pyarrow = { extras = ["all"], version = "^8.0.0" }
 xxhash = "^3.0.0"
 networkx = "^2.8.4"
 pandas = "^1.4.3"
@@ -17,16 +17,16 @@ devtools = "^0.8.0"
 diskcache = "^5.4.0"
 SQLAlchemy = "^1.4.39"
 mimesis = "^5.5.0"
-ibis-framework = {extras = ["duckdb"], version = "^3.0.2"}
+ibis-framework = { extras = ["duckdb"], version = "^3.0.2" }
 gym = "^0.24.1"
 PyYAML = "^6.0"
-vaex-core = "^4.10.0"
+# svm-rs = { path = "./svm-rs", develop = true }
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
 mypy = "^0.961"
 black = { version = "^22.6.0", allow-prereleases = true }
-jupyterlab = {extras = ["all"], version = "^3.4.3"}
+jupyterlab = { extras = ["all"], version = "^3.4.3" }
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

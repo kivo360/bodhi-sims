@@ -9,7 +9,7 @@ SQL commands can be transferred quickly.
 
 CREATE_ACCOUNT = """
 CREATE TABLE IF NOT EXISTS accounts(
-        id TEXT NOT NULL DEFAULT gen_random_uuid(),
+        id TEXT NOT NULL,
         episode VARCHAR, 
         address VARCHAR, 
         balance Numeric, 

@@ -17,3 +17,8 @@ A small simulation framework. It uses duckdb to store the state of the simulatio
 ### Requirements
 
 - [Poetry Packages Manager](https://python-poetry.org/) 
+
+
+## Interesting Libraries:
+
+- https://github.com/numary/machine
