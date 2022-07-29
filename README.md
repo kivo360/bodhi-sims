@@ -22,3 +22,4 @@ A small simulation framework. It uses duckdb to store the state of the simulatio
 ## Interesting Libraries:
 
 - https://github.com/numary/machine
+

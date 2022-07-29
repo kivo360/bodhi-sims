@@ -1,46 +1,166 @@
-use chrono::NaiveDate;
+use anyhow::Result;
+use anyhow::{anyhow, ensure};
 use hashbrown::HashMap;
-use rusty_money::{iso, Money};
-use serde::{de, Deserialize, Deserializer, Serialize};
-use std::fmt::Display;
-use std::str::FromStr;
+use serde::{Deserialize, Serialize};
+// use rusty_money::Money;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum Reason {
+    Basic,
+    Detailed(String),
+}
+
+impl Reason {
+    fn msg(&self) -> String {
+        match self {
+            Reason::Basic => "Payment succeeded".to_string(),
+            Reason::Detailed(msg) => msg.to_string(),
+        }
+    }
+}
+
+pub enum Command {
+    // from, to, amount
+    Money(String, String, f64, Reason),
+    // Virtual(String, String, f64),
+    KeyLog,
+}
 
 /// root data structure that contains the deserialized `LedgerFile` data
 /// and associated structs
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-pub struct LedgerFile {
+// #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+pub struct Ledger {
     pub currency: String,
-    pub accounts: Vec<Account>,
+    pub accounts: HashMap<String, Account>,
     pub transactions: Vec<Transaction>,
+}
+
+impl Ledger {
+    pub fn new(currency: String) -> Self {
+        Self {
+            currency,
+            accounts: HashMap::new(),
+            transactions: vec![],
+        }
+    }
+
+    pub fn add_account(&mut self, account: Account) {
+        self.accounts.insert(account.account.clone(), account);
+    }
+
+    pub fn add_accounts(&mut self, accounts: Vec<Account>) {
+        for account in accounts {
+            self.add_account(account);
+        }
+    }
+
+    pub fn command(&mut self, command: Command) -> Result<()> {
+        match command {
+            Command::Money(from, to, amount, reason) => {
+                let response = self.transfer_money(&from, &to, amount, reason);
+                let is_error = match response {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(e),
+                };
+                return is_error;
+            }
+            Command::KeyLog => return Ok(()),
+        }
+        // Ok(())
+        // self.transactions.push(transaction);
+    }
+
+    pub fn transfer_money(
+        &mut self,
+        from: &str,
+        to: &str,
+        amount: f64,
+        reason: Reason,
+    ) -> Result<()> {
+        let mut transaction = Transaction::new(0, from.to_string(), to.to_string(), amount, reason);
+        if !self.accounts.contains_key(from) {
+            transaction.status = false;
+            self.transactions.push(transaction.clone());
+            return Err(anyhow!("The origin account does not exist"))?;
+        };
+        // let to_account = self.accounts.get_mut(to);
+        if !self.accounts.contains_key(to) {
+            transaction.status = false;
+            self.transactions.push(transaction.clone());
+            return Err(anyhow!("The to account does not exist"))?;
+        };
+        let mut is_raise = false;
+        self.accounts.entry_ref(from).and_modify(|acc| {
+            match acc.withdraw(amount) {
+                Ok(_) => (),
+                Err(_e) => {
+                    is_raise = true;
+                    return ();
+                }
+            };
+        });
+        if is_raise {
+            transaction.status = false;
+            self.transactions.push(transaction.clone());
+            return Err(anyhow!("The origin account does not have enough money"))?;
+        }
+        self.accounts.entry_ref(to).and_modify(|acc| {
+            acc.deposit(amount);
+        });
+        transaction.status = true;
+        self.transactions.push(transaction);
+        Ok(())
+    }
+
+    fn sizeof(&self) -> usize {
+        self.accounts.len()
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Account {
     pub account: String,
     pub amount: f64,
-    pub budget_month: Option<f64>,
-    pub budget_year: Option<f64>,
+}
+impl Account {
+    pub fn new(account: String, amount: f64) -> Self {
+        Self { account, amount }
+    }
+    pub fn deposit(&mut self, amount: f64) {
+        self.amount += amount;
+    }
+    pub fn withdraw(&mut self, amount: f64) -> Result<()> {
+        ensure!(self.amount >= amount, "Insufficient funds");
+
+        self.amount -= amount;
+        println!("withdraw: {:?}", self.amount);
+        Ok(())
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Transaction {
-    #[serde(deserialize_with = "deserialize_date_from_str")]
-    pub date: NaiveDate,
+    pub step: i64,
     pub account: Option<String>,
+    pub status: bool,
     pub amount: Option<f64>,
     pub description: String,
-    pub offset_account: Option<String>,
+    pub from_account: Option<String>,
     pub transactions: Option<Vec<TransactionList>>,
 }
 
-fn deserialize_date_from_str<'de, S, D>(deserializer: D) -> Result<S, D::Error>
-where
-    S: FromStr,
-    S::Err: Display,
-    D: Deserializer<'de>,
-{
-    let s: String = Deserialize::deserialize(deserializer)?;
-    S::from_str(&s).map_err(de::Error::custom)
+impl Transaction {
+    pub fn new(step: i64, from: String, to: String, amount: f64, reason: Reason) -> Self {
+        Self {
+            step: step,
+            account: Some(to),
+            status: true,
+            amount: Some(amount),
+            description: format!("{}", reason.msg()),
+            from_account: Some(from),
+            transactions: None,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
@@ -57,123 +177,88 @@ pub enum Group {
     None,
 }
 
-/// data structure for handling `Option` values contained
-/// within the `LedgerFile` for ease of program access
-#[derive(Debug, PartialEq)]
-struct OptionalKeys {
-    account: String,
-    offset_account: String,
-    amount: f64,
-    transactions: Vec<TransactionList>,
-}
-
-impl OptionalKeys {
-    fn match_optional_keys(transaction: &Transaction) -> Self {
-        let account = match &transaction.account {
-            None => "".to_string(),
-            Some(name) => name.to_string(),
-        };
-
-        let offset_account = match &transaction.offset_account {
-            None => "".to_string(),
-            Some(name) => name.to_string(),
-        };
-
-        let amount = transaction.amount.unwrap_or(0.00);
-
-        let transactions = match transaction.transactions.clone() {
-            None => vec![],
-            Some(list) => list,
-        };
-
-        Self {
-            account,
-            offset_account,
-            amount,
-            transactions,
-        }
-    }
-}
-
-#[derive(Debug, PartialEq)]
-struct GroupMap {
-    account_amount_map: HashMap<String, HashMap<String, f64>>,
-}
-
-impl GroupMap {
-    fn new() -> Self {
-        Self {
-            account_amount_map: HashMap::new(),
-        }
-    }
-
-    fn send_money(&mut self, from_account: &str, to_account: &str, amount: f64) {
-        // TODO: Get back to this when you get finished seeing dad.
-        // TODO: Check to see if an account exists.
-        let mut from_account_map = self
-            .account_amount_map
-            .entry(from_account.to_string())
-            .or_insert(HashMap::new());
-        // let mut to_account_map = self
-        //     .account_amount_map
-        //     .entry(to_account.to_string())
-        //     .or_insert(HashMap::new());
-
-        // let from_amount = from_account_map
-        //     .entry(to_account.to_string())
-        //     .or_insert(0.00);
-        // *from_amount -= amount;
-        // let to_amount = to_account_map
-        //     .entry(from_account.to_string())
-        //     .or_insert(0.00);
-        // *to_amount += amount;
-    }
-
-    fn get_account_amount(&self, account: &str) -> f64 {
-        let mut total = 0.00;
-        for (key, value) in self.account_amount_map.iter() {
-            if key == account {
-                for (_, amount) in value.iter() {
-                    total += amount;
-                }
-            }
-        }
-        total
-    }
-}
-
 #[cfg(test)]
 mod test_super {
+    use anyhow::Ok;
+
     use super::*;
+
+    fn get_test_accounts() -> Vec<Account> {
+        vec![
+            Account::new("C".to_string(), 100.0),
+            Account::new("D".to_string(), 200.0),
+        ]
+    }
+
+    fn init_ledger() -> Ledger {
+        let mut ledger = Ledger::new("USD".to_string());
+        ledger.add_accounts(get_test_accounts());
+        ledger
+    }
+
+    fn pct_of_total(pct: f64, account: &Account) -> Result<Account> {
+        ensure!(pct <= 1.0, "Percentage must be less than or equal to 1.0");
+        let mut acc = account.clone();
+        acc.amount *= pct;
+        Ok(acc.clone())
+    }
+
+    #[test]
+    fn test_incorrect_money_amount() {
+        let mut ledger = init_ledger();
+        let account = Account::new("A".to_string(), 100.0);
+        ledger.add_account(account.clone());
+        let mut changable = account.to_owned();
+        changable.withdraw(1000.0).unwrap();
+        assert_eq!(changable.amount, 90.0);
+    }
+
+    #[test]
+    fn test_correct_money_transfer_amount() {
+        let mut ledger = init_ledger();
+        let account = Account::new("A".to_string(), 100.0);
+        let account2 = Account::new("B".to_string(), 100.0);
+
+        let mut changable = account.to_owned();
+        changable.withdraw(10.0).unwrap();
+        assert_eq!(changable.amount, 90.0);
+    }
+
+    #[test]
+    fn test_ledger_adds_accounts() {
+        let mut ledger = init_ledger();
+        let account = Account::new("A".to_string(), 100.0);
+        let account2 = Account::new("B".to_string(), 100.0);
+
+        ledger.add_account(account);
+        ledger.add_account(account2);
+
+        assert!(ledger.sizeof() > 0);
+
+        assert_eq!(ledger.sizeof(), 4);
+        // assert!(true);
+    }
+
+    #[test]
+    fn test_assign_group() {
+        let from_account = "from_account";
+        let to_account = "from_account";
+        let amount = 80.00;
+
+        let _transaction = Transaction {
+            status: false,
+            step: 0 as i64,
+            account: Some(from_account.to_string()),
+            amount: Some(amount),
+            description: "This is a test transaction".to_string(),
+            from_account: Some(to_account.to_string()),
+            transactions: None,
+        };
+    }
 
     #[test]
     fn assign_account_vec() {
-        let accounts = vec![
-            Account {
-                account: "asset:cash".to_string(),
-                amount: 100.00,
-                budget_month: None,
-                budget_year: None,
-            },
-            Account {
-                account: "expense:foo".to_string(),
-                amount: 0.00,
-                budget_month: None,
-                budget_year: None,
-            },
-            Account {
-                account: "expense:bar".to_string(),
-                amount: 0.00,
-                budget_month: None,
-                budget_year: None,
-            },
-            Account {
-                account: "expense:baz".to_string(),
-                amount: 0.00,
-                budget_month: None,
-                budget_year: None,
-            },
-        ];
+        let accounts = get_test_accounts();
         assert!(accounts.len() > 0);
     }
 }

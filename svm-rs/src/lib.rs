@@ -3,12 +3,6 @@ use pyo3::prelude::*;
 
 pub mod accounts;
 
-// #[macro_use]
-// extern crate serde;
-
-// #[macro_use]
-// extern crate async_trait;
-
 #[pyclass]
 struct ItemController {
     items: HashMap<String, u32>,
