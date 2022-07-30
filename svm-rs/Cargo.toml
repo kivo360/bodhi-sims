@@ -6,9 +6,25 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
 name = "svm_rs"
-crate-type = ["cdylib"]
+path = "src/lib.rs"
+# crate-type = ["cdylib", ]
+
+# [lib]
+# name = "svm"
+
+# "color",
+# "debug",
+# "doc",
+# "lints",
+# "no_cargo",
+# "paw",
+# "paw_dep",
+# "suggestions",
+# "wrap_help",
+# "yaml",
 
 [dependencies]
+
 coerce = "0.6.0"
 pyo3 = { version = "0.16.5", features = ["extension-module"] }
 serde = { version = "1.0.140", features = ["derive", "alloc"] }
@@ -30,6 +46,12 @@ tui = { version = "0.18.0", features = ["serde"] }
 crossterm = { version = "0.24.0", features = ["event-stream"] }
 datafusion = "10.0.0"
 anyhow = "1.0.58"
+structopt = { version = "0.3.26" }
+clap = "3.2.15"
 
+[dev-dependencies]
+assert_cmd = "2.0.4"
+predicates = "2.1.1"
+# clippy = "0.0.302"
 # [[example]]
 # name = "boolean" # examples/boolean.rs

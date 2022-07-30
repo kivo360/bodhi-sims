@@ -1,12 +1,18 @@
+// #![deny(missing_docs)]
+// //! A simple in memory account and transaction system
+// //!
 use anyhow::Result;
 use anyhow::{anyhow, ensure};
 use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
 // use rusty_money::Money;
 
+/// A way to create a custom enum type.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Reason {
+    /// A way to create a custom enum type.
     Basic,
+    /// A way to create a custom enum type.
     Detailed(String),
 }
 
@@ -18,11 +24,11 @@ impl Reason {
         }
     }
 }
-
+/// A way to create a custom enum type.
 pub enum Command {
-    // from, to, amount
+    /// Sending money transaction between two accounts.
     Money(String, String, f64, Reason),
-    // Virtual(String, String, f64),
+    /// We're logging a record inside the a key value store.
     KeyLog,
 }
 
@@ -30,8 +36,10 @@ pub enum Command {
 /// and associated structs
 // #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Ledger {
-    pub currency: String,
+    currency: String,
+    /// accounts are a key value store of all accounts within the database.
     pub accounts: HashMap<String, Account>,
+    /// transactions are a key value store of all transactions within the database.
     pub transactions: Vec<Transaction>,
 }
 
@@ -179,7 +187,6 @@ pub enum Group {
 
 #[cfg(test)]
 mod test_super {
-    use anyhow::Ok;
 
     use super::*;
 
@@ -196,14 +203,8 @@ mod test_super {
         ledger
     }
 
-    fn pct_of_total(pct: f64, account: &Account) -> Result<Account> {
-        ensure!(pct <= 1.0, "Percentage must be less than or equal to 1.0");
-        let mut acc = account.clone();
-        acc.amount *= pct;
-        Ok(acc.clone())
-    }
-
     #[test]
+    #[should_panic]
     fn test_incorrect_money_amount() {
         let mut ledger = init_ledger();
         let account = Account::new("A".to_string(), 100.0);
@@ -215,10 +216,8 @@ mod test_super {
 
     #[test]
     fn test_correct_money_transfer_amount() {
-        let mut ledger = init_ledger();
+        // Less than the amount in the account
         let account = Account::new("A".to_string(), 100.0);
-        let account2 = Account::new("B".to_string(), 100.0);
-
         let mut changable = account.to_owned();
         changable.withdraw(10.0).unwrap();
         assert_eq!(changable.amount, 90.0);

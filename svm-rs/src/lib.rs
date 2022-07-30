@@ -1,7 +1,14 @@
+// #![deny(missing_docs)]
+// //! A simple key/value store.
+// //!
 use hashbrown::HashMap;
 use pyo3::prelude::*;
 
+pub use kv::KvStore;
 pub mod accounts;
+// pub use kvs;
+pub mod kv;
+// mod kvs;
 
 #[pyclass]
 struct ItemController {
