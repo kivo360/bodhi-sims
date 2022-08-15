@@ -29,7 +29,7 @@ DuckDBConn = duckdb.DuckDBPyConnection
 # episode, address, balance, timestamp
 @dataclass
 class StateCtx:
-    address: Address
+    address: Address  # type: ignore
     episode: str = field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: int = field(default=0)
 

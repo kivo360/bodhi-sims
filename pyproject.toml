@@ -21,12 +21,14 @@ ibis-framework = { extras = ["duckdb"], version = "^3.0.2" }
 gym = "^0.24.1"
 PyYAML = "^6.0"
 # svm-rs = { path = "./svm-rs", develop = true }
+sqlmodel = "^0.0.6"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
 mypy = "^0.961"
 black = { version = "^22.6.0", allow-prereleases = true }
 jupyterlab = { extras = ["all"], version = "^3.4.3" }
+torch = "^1.12.1"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

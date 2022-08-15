@@ -103,7 +103,7 @@ class Component(ABC, ContextualizedMixin, Identifiable, metaclass=InitContextMet
         super().__init_subclass__(**kwargs)
 
         if cls not in registry.registry():
-            registry.register(cls, cls.registered_name)
+            registry.register(cls, cls.registered_name)  # type: ignore
 
     def default(self, key: str, value: Any, kwargs: dict = None) -> Any:
         """Resolves which defaults value to use for construction.

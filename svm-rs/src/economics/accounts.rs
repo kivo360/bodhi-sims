@@ -5,7 +5,6 @@ use anyhow::Result;
 use anyhow::{anyhow, ensure};
 use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
-// use rusty_money::Money;
 
 /// A way to create a custom enum type.
 #[derive(Debug, Serialize, Deserialize)]
@@ -41,6 +40,20 @@ pub struct Ledger {
     pub accounts: HashMap<String, Account>,
     /// transactions are a key value store of all transactions within the database.
     pub transactions: Vec<Transaction>,
+}
+
+/// Supposed to be a trait. Records a network version of the transaction.
+pub struct Network {}
+
+impl Network {
+    pub fn new() -> Self {
+        Network {}
+    }
+
+    pub fn record_tx(&self, transaction: Transaction) -> Result<()> {
+        println!("{:?}", transaction);
+        Ok(())
+    }
 }
 
 impl Ledger {
@@ -177,14 +190,6 @@ pub struct TransactionList {
     pub amount: f64,
 }
 
-#[derive(Debug, PartialEq)]
-pub enum Group {
-    Monthly,
-    Yearly,
-    Daily,
-    None,
-}
-
 #[cfg(test)]
 mod test_super {
 
@@ -241,7 +246,9 @@ mod test_super {
     #[test]
     fn test_assign_group() {
         let from_account = "from_account";
-        let to_account = "from_account";
+        let to_account = "to_account";
+        let network = Network::new();
+
         let amount = 80.00;
 
         let _transaction = Transaction {
@@ -253,6 +260,9 @@ mod test_super {
             from_account: Some(to_account.to_string()),
             transactions: None,
         };
+
+        // We would record the transaction using something like an engine.
+        network.record_tx(_transaction.clone()).unwrap();
     }
 
     #[test]

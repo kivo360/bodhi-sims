@@ -6,8 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
 name = "svm_rs"
-path = "src/lib.rs"
-# crate-type = ["cdylib", ]
+# path = "src/lib.rs"
+crate-type = ["cdylib"]
 
 # [lib]
 # name = "svm"
@@ -48,10 +48,16 @@ datafusion = "10.0.0"
 anyhow = "1.0.58"
 structopt = { version = "0.3.26" }
 clap = "3.2.15"
+failure = "0.1.5"
+thiserror = "1.0.31"
+
 
 [dev-dependencies]
 assert_cmd = "2.0.4"
 predicates = "2.1.1"
+tempfile = "3.0.7"
+walkdir = "2.2.7"
+
 # clippy = "0.0.302"
 # [[example]]
 # name = "boolean" # examples/boolean.rs

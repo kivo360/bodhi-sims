@@ -1,0 +1,930 @@
+import abc
+from abc import ABC, abstractmethod
+
+# from importlib.resources import Resource
+
+# from posixpath import split
+from turtle import forward
+from typing import (
+    Any,
+    Callable,
+    ClassVar,
+    ContextManager,
+    Dict,
+    FrozenSet,
+    Generator,
+    Hashable,
+    Iterable,
+    Iterator,
+    List,
+    MutableMapping,
+    NamedTuple,
+    Optional,
+    OrderedDict,
+    Sequence,
+    Set,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+)
+
+import gym
+import pyarrow as pa
+from py_svm.typings import ReprArgs
+from py_svm.utils import hooks
+from py_svm.utils.hooks import RemovableHandle
+from pydantic import fields
+from pydantic import main as mainpydantic
+from pydantic import mypy
+from pydantic.main import ModelMetaclass
+from py_svm import log
+
+# from sqlalchemy.orm import registry
+import weakref
+from py_svm.core import registry
+
+T = TypeVar("T", bound="Module")
+
+
+_global_backward_hooks: Dict[int, Callable] = OrderedDict()
+_global_is_full_backward_hook: Optional[bool] = None
+_global_forward_pre_hooks: Dict[int, Callable] = OrderedDict()
+_global_forward_hooks: Dict[int, Callable] = OrderedDict()
+
+_EXTRA_STATE_KEY_SUFFIX = "_extra_state"
+
+
+def _addindent(s_, numSpaces):
+    s = s_.split("\n")
+    # don't do anything for single-line stuff
+    if len(s) == 1:
+        return s_
+    first = s.pop(0)
+    s = [(numSpaces * " ") + line for line in s]
+    s = "\n".join(s)
+    s = first + "\n" + s
+    return s
+
+
+def register_module_forward_pre_hook(hook: Callable[..., None]) -> RemovableHandle:
+    r"""Registers a forward pre-hook common to all modules.
+
+    .. warning ::
+
+        This adds global state to the `nn.module` module
+        and it is only intended for debugging/profiling purposes.
+
+    The hook will be called every time before :func:`forward` is invoked.
+    It should have the following signature::
+
+        hook(module, input) -> None or modified input
+
+    The input contains only the positional arguments given to the module.
+    Keyword arguments won't be passed to the hooks and only to the ``forward``.
+    The hook can modify the input. User can either return a tuple or a
+    single modified value in the hook. We will wrap the value into a tuple
+    if a single value is returned(unless that value is already a tuple).
+
+    This hook has precedence over the specific module hooks registered with
+    ``register_forward_pre_hook``.
+
+    Returns:
+        :class:`torch.utils.hooks.RemovableHandle`:
+            a handle that can be used to remove the added hook by calling
+            ``handle.remove()``
+    """
+    handle = hooks.RemovableHandle(_global_forward_pre_hooks)
+    _global_forward_pre_hooks[handle.id] = hook
+    return handle
+
+
+def register_module_forward_hook(hook: Callable[..., None]) -> RemovableHandle:
+    r"""Registers a global forward hook for all the modules
+
+    .. warning ::
+
+        This adds global state to the `nn.module` module
+        and it is only intended for debugging/profiling purposes.
+
+    The hook will be called every time after :func:`forward` has computed an output.
+    It should have the following signature::
+
+        hook(module, input, output) -> None or modified output
+
+    The input contains only the positional arguments given to the module.
+    Keyword arguments won't be passed to the hooks and only to the ``forward``.
+    The hook can modify the output. It can modify the input inplace but
+    it will not have effect on forward since this is called after
+    :func:`forward` is called.
+
+    Returns:
+        :class:`torch.utils.hooks.RemovableHandle`:
+            a handle that can be used to remove the added hook by calling
+            ``handle.remove()``
+
+    This hook will be executed before specific module hooks registered with
+    ``register_forward_hook``.
+    """
+    handle = hooks.RemovableHandle(_global_forward_hooks)
+    _global_forward_hooks[handle.id] = hook
+    return handle
+
+
+class DatabaseAPI(MutableMapping[bytes, bytes], ABC):
+    """
+    A class representing a database.
+    """
+
+    @abstractmethod
+    def set(self, key: bytes, value: bytes) -> None:
+        """
+        Assign the ``value`` to the ``key``.
+        """
+        ...
+
+    @abstractmethod
+    def exists(self, key: bytes) -> bool:
+        """
+        Return ``True`` if the ``key`` exists in the database, otherwise ``False``.
+        """
+        ...
+
+    @abstractmethod
+    def delete(self, key: bytes) -> None:
+        """
+        Delete the given ``key`` from the database.
+        """
+        ...
+
+
+# TODO: Fix this at some point.
+def register_module_backward_hook(
+    hook: Callable[["Module", Any, Any], Union[None, Any]]
+) -> RemovableHandle:
+    r"""Registers a backward hook common to all the modules.
+
+    This function is deprecated in favor of
+    :func:`torch.nn.modules.module.register_module_full_backward_hook`
+    and the behavior of this function will change in future versions.
+
+    Returns:
+        :class:`torch.utils.hooks.RemovableHandle`:
+            a handle that can be used to remove the added hook by calling
+            ``handle.remove()``
+
+    """
+    global _global_is_full_backward_hook
+    if _global_is_full_backward_hook is True:
+        raise RuntimeError(
+            "Cannot use both regular backward hooks and full backward hooks as a "
+            "global Module hook. Please use only one of them."
+        )
+
+    _global_is_full_backward_hook = False
+
+    handle = hooks.RemovableHandle(_global_backward_hooks)
+    _global_backward_hooks[handle.id] = hook
+    return handle
+
+
+def register_module_full_backward_hook(
+    hook: Callable[["Module", Any, Any], Union[None, Any]]
+) -> RemovableHandle:
+    r"""Registers a backward hook common to all the modules.
+
+    .. warning ::
+        This adds global state to the `nn.module` module
+        and it is only intended for debugging/profiling purposes.
+
+    The hook will be called every time the gradients with respect to module
+    inputs are computed. The hook should have the following signature::
+
+        hook(module, grad_input, grad_output) -> Tensor or None
+
+    The :attr:`grad_input` and :attr:`grad_output` are tuples. The hook should
+    not modify its arguments, but it can optionally return a new gradient with
+    respect to the input that will be used in place of :attr:`grad_input` in
+    subsequent computations. :attr:`grad_input` will only correspond to the inputs given
+    as positional arguments and all kwarg arguments will not appear in the hook. Entries
+    in :attr:`grad_input` and :attr:`grad_output` will be ``None`` for all non-Tensor
+    arguments.
+
+    For technical reasons, when this hook is applied to a Module, its forward function will
+    receive a view of each Tensor passed to the Module. Similarly the caller will receive a view
+    of each Tensor returned by the Module's forward function.
+
+    Global hooks are called before hooks registered with `register_backward_hook`
+
+    Returns:
+        :class:`torch.utils.hooks.RemovableHandle`:
+            a handle that can be used to remove the added hook by calling
+            ``handle.remove()``
+
+    """
+    global _global_is_full_backward_hook
+    if _global_is_full_backward_hook is False:
+        raise RuntimeError(
+            "Cannot use both regular backward hooks and full backward hooks as a "
+            "global Module hook. Please use only one of them."
+        )
+
+    _global_is_full_backward_hook = True
+
+    handle = hooks.RemovableHandle(_global_backward_hooks)
+    _global_backward_hooks[handle.id] = hook
+    return handle
+
+
+def _forward_unimplemented(self, *input: Any) -> None:
+    r"""Defines the computation performed at every call.
+
+    Should be overridden by all subclasses.
+
+    .. note::
+        Although the recipe for forward pass needs to be defined within
+        this function, one should call the :class:`Module` instance afterwards
+        instead of this since the former takes care of running the
+        registered hooks while the latter silently ignores them.
+    """
+    raise NotImplementedError(
+        f'Module [{type(self).__name__}] is missing the required "forward" function'
+    )
+
+
+class BaseDB(DatabaseAPI, ABC):
+    """
+    This is an abstract key/value lookup with all :class:`bytes` values,
+    with some convenience methods for databases. As much as possible,
+    you can use a DB as if it were a :class:`dict`.
+    Notable exceptions are that you cannot iterate through all values or get the length.
+    (Unless a subclass explicitly enables it).
+    All subclasses must implement these methods:
+    __init__, __getitem__, __setitem__, __delitem__
+    Subclasses may optionally implement an _exists method
+    that is type-checked for key and value.
+    """
+
+    @abc.abstractmethod
+    def run_query(self, query: str) -> pa.Table:
+        ...
+
+    @abc.abstractmethod
+    def execute(
+        self,
+        query: str,
+        parameters: object = [],
+        multiple_parameter_sets: bool = False,
+        *args,
+        **kwargs,
+    ) -> pa.Table:
+        ...
+
+    def set(self, key: bytes, value: bytes) -> None:
+        self[key] = value
+
+    def exists(self, key: bytes) -> bool:
+        return self.__contains__(key)
+
+    def __contains__(self, key: bytes) -> bool:  # type: ignore # Breaks LSP
+        if hasattr(self, "_exists"):
+            # Classes which inherit this class would have `_exists` attr
+            return self._exists(key)  # type: ignore
+        else:
+            return super().__contains__(key)
+
+    def delete(self, key: bytes) -> None:
+        try:
+            del self[key]
+        except KeyError:
+            pass
+
+    def __getitem__(self, key: bytes) -> bytes:
+        ...
+
+    def __setitem__(self, slot: bytes, value: bytes) -> None:
+        ...
+
+    def __delitem__(self, key: bytes) -> None:
+        ...
+
+    def __iter__(self) -> Iterator[bytes]:
+        ...
+
+    def __len__(self) -> int:
+        ...
+
+    def _exists(self, key: bytes) -> bool:
+        ...
+
+
+class Module(abc.ABC):
+    # __slots__: Tuple[str, ...] = (
+    #     "_parameters",
+    #     "_buffers",
+    #     "_non_persistent_buffers_set",
+    #     "_backward_hooks",
+    #     "_is_full_backward_hook",
+    #     "_forward_hooks",
+    #     "_forward_pre_hooks",
+    #     "_state_dict_hooks",
+    #     "_load_state_dict_pre_hooks",
+    #     "_load_state_dict_post_hooks",
+    #     "_modules",
+    #     "_states",
+    #     "_behaviors",
+    # )
+    _parameters: Dict[str, Optional[Any]]
+    _buffers: Dict[str, Optional[Any]]
+    _non_persistent_buffers_set: Set[str]
+    _backward_hooks: Dict[int, Callable]
+    _is_full_backward_hook: bool
+    _forward_hooks: Dict[int, Callable]
+    _forward_pre_hooks: Dict[int, Callable]
+    _state_dict_hooks: Dict[int, Callable]
+    _load_state_dict_pre_hooks: Dict[int, Callable]
+    _load_state_dict_post_hooks: Dict[int, Callable]
+    _modules: Dict[str, Optional["Module"]]
+    _states: Dict[str, Optional[Any]]
+    _behaviors: Dict[str, Optional[Any]]
+    _resource_registry: Dict[str, Optional[Any]]
+
+    def __init__(self) -> None:
+        self.__setattr__("training", True)
+        self.__setattr__("_parameters", OrderedDict())
+        self.__setattr__("_buffers", OrderedDict())
+        self.__setattr__("_non_persistent_buffers_set", set())
+        self.__setattr__("_backward_hooks", OrderedDict())
+        self.__setattr__("_is_full_backward_hook", None)
+        self.__setattr__("_forward_hooks", OrderedDict())
+        self.__setattr__("_forward_pre_hooks", OrderedDict())
+        self.__setattr__("_state_dict_hooks", OrderedDict())
+        self.__setattr__("_load_state_dict_pre_hooks", OrderedDict())
+        self.__setattr__("_load_state_dict_post_hooks", OrderedDict())
+        self.__setattr__("_states", OrderedDict())
+        self.__setattr__("_behaviors", OrderedDict())
+        self.__setattr__("_modules", OrderedDict())
+        self.__setattr__("_resource_registry", OrderedDict())
+
+    def _get_name(self) -> str:
+        return self.__class__.__name__
+
+    def apply(self: T, fn: Callable[["Module"], None]) -> T:
+        r"""Applies ``fn`` recursively to every submodule (as returned by ``.children()``)
+        as well as self. Typical use includes initializing the parameters of a model
+        (see also :ref:`nn-init-doc`).
+
+        Args:
+            fn (:class:`Module` -> None): function to be applied to each submodule
+
+        Returns:
+            Module: self
+
+        Example::
+
+            >>> @torch.no_grad()
+            >>> def init_weights(m):
+            >>>     print(m)
+            >>>     if type(m) == nn.Linear:
+            >>>         m.weight.fill_(1.0)
+            >>>         print(m.weight)
+            >>> net = nn.Sequential(nn.Linear(2, 2), nn.Linear(2, 2))
+            >>> net.apply(init_weights)
+            Linear(in_features=2, out_features=2, bias=True)
+            Parameter containing:
+            tensor([[ 1.,  1.],
+                    [ 1.,  1.]])
+            Linear(in_features=2, out_features=2, bias=True)
+            Parameter containing:
+            tensor([[ 1.,  1.],
+                    [ 1.,  1.]])
+            Sequential(
+              (0): Linear(in_features=2, out_features=2, bias=True)
+              (1): Linear(in_features=2, out_features=2, bias=True)
+            )
+            Sequential(
+              (0): Linear(in_features=2, out_features=2, bias=True)
+              (1): Linear(in_features=2, out_features=2, bias=True)
+            )
+        """
+        for module in self.children():
+            module.apply(fn)
+        fn(self)
+        return self
+
+    def add_module(self, name: str, module: Optional["Module"]) -> None:
+        r"""Adds a child module to the current module.
+
+        The module can be accessed as an attribute using the given name.
+
+        Args:
+            name (string): name of the child module. The child module can be
+                accessed from this module using the given name
+            module (Module): child module to be added to the module.
+        """
+        if not isinstance(module, Module) and module is not None:
+            raise TypeError("{} is not a Module subclass")
+        elif hasattr(self, name) and name not in self._modules:
+            raise KeyError("attribute '{}' already exists".format(name))
+        elif "." in name:
+            raise KeyError('module name can\'t contain ".", got: {}'.format(name))
+        elif name == "":
+            raise KeyError('module name can\'t be empty string ""')
+        self._modules[name] = module
+
+    def add_state(self, name: str, state: Optional["State"]) -> None:
+        r"""Adds a child module to the current module.
+
+        The module can be accessed as an attribute using the given name.
+
+        Args:
+            name (string): name of the child module. The child module can be
+                accessed from this module using the given name
+            module (Module): child module to be added to the module.
+        """
+        if not isinstance(state, State) and state is not None:
+            raise TypeError("{} is not a Module subclass")
+        elif hasattr(self, name) and name not in self._states:
+            raise KeyError("attribute '{}' already exists".format(name))
+        elif "." in name:
+            raise KeyError('module name can\'t contain ".", got: {}'.format(name))
+        elif name == "":
+            raise KeyError('module name can\'t be empty string ""')
+        self._states[name] = state
+
+    def add_behavior(self, name: str, behavior: Optional["Behavior"]) -> None:
+        r"""Adds a child module to the current module.
+
+        The module can be accessed as an attribute using the given name.
+
+        Args:
+            name (string): name of the child module. The child module can be
+                accessed from this module using the given name
+            module (Module): child module to be added to the module.
+        """
+        if not isinstance(behavior, Behavior) and behavior is not None:
+            raise TypeError("{} is not a Module subclass")
+        elif hasattr(self, name) and name not in self._behaviors:
+            raise KeyError("attribute '{}' already exists".format(name))
+        elif "." in name:
+            raise KeyError('module name can\'t contain ".", got: {}'.format(name))
+        elif name == "":
+            raise KeyError('module name can\'t be empty string ""')
+        self._behaviors[name] = behavior
+
+    def register_module(self, name, module: "Module") -> None:
+        """Alias for :meth:`add_module`."""
+        self.add_module(name, module)
+
+    def register_state(self, name, state: "State") -> None:
+        """Alias for :meth:`add_state`."""
+        self.add_state(name, state)
+
+    def register_behavior(self, name, behavior: "Behavior") -> None:
+        """Alias for :meth:`add_behavior`."""
+        self.add_behavior(name, behavior)
+
+    def children(self) -> Iterator["Module"]:
+        r"""Returns an iterator over immediate children modules.
+
+        Yields:
+            Module: a child module
+        """
+        for name, module in self.named_children():
+            yield module
+
+    def named_children(self) -> Iterator[Tuple[str, "Module"]]:
+        r"""Returns an iterator over immediate children modules, yielding both
+        the name of the module as well as the module itself.
+
+        Yields:
+            (string, Module): Tuple containing a name and child module
+
+        Example::
+
+            >>> for name, module in model.named_children():
+            >>>     if name in ['conv4', 'conv5']:
+            >>>         print(module)
+
+        """
+        memo = set()
+        for name, module in self._modules.items():
+            if module is not None and module not in memo:
+                memo.add(module)
+                yield name, module
+
+    def modules(self) -> Iterator["Module"]:
+        for _, module in self.named_modules():
+            yield module
+
+    def named_modules(
+        self,
+        memo: Optional[Set["Module"]] = None,
+        prefix: str = "",
+        remove_duplicate: bool = True,
+    ):
+        r"""Returns an iterator over all modules in the network, yielding
+        both the name of the module as well as the module itself.
+
+        Args:
+            memo: a memo to store the set of modules already added to the result
+            prefix: a prefix that will be added to the name of the module
+            remove_duplicate: whether to remove the duplicated module instances in the result
+                or not
+
+        Yields:
+            (string, Module): Tuple of name and module
+
+        Note:
+            Duplicate modules are returned only once. In the following
+            example, ``l`` will be returned only once.
+
+        Example::
+
+            >>> l = nn.Linear(2, 2)
+            >>> net = nn.Sequential(l, l)
+            >>> for idx, m in enumerate(net.named_modules()):
+                    print(idx, '->', m)
+
+            0 -> ('', Sequential(
+              (0): Linear(in_features=2, out_features=2, bias=True)
+              (1): Linear(in_features=2, out_features=2, bias=True)
+            ))
+            1 -> ('0', Linear(in_features=2, out_features=2, bias=True))
+
+        """
+
+        if memo is None:
+            memo = set()
+        if self not in memo:
+            if remove_duplicate:
+                memo.add(self)
+            yield prefix, self
+            for name, module in self._modules.items():
+                if module is None:
+                    continue
+                submodule_prefix = prefix + ("." if prefix else "") + name
+                for m in module.named_modules(memo, submodule_prefix, remove_duplicate):
+                    yield m
+
+    def __getattr__(self, name: str) -> Union[weakref.CallableProxyType, "Module"]:
+        if "_states" in self.__dict__:
+            _parameters = self.__dict__["_states"]
+            if name in _parameters:
+                return _parameters[name]
+        if "_behaviors" in self.__dict__:
+            _buffers = self.__dict__["_behaviors"]
+            if name in _buffers:
+                return _buffers[name]
+        if "_modules" in self.__dict__:
+            modules = self.__dict__["_modules"]
+            if name in modules:
+                return modules[name]
+        if "_resource_registry" in self.__dict__:
+            resources = self.__dict__["_resource_registry"]
+            if name in resources:
+                return resources[name]
+        if name in self.__dict__:
+            return self.__dict__[name]
+        raise AttributeError(
+            "'{}' object has no attribute '{}'".format(type(self).__name__, name)
+        )
+
+    def __setattr__(self, name: str, value: Any) -> None:
+
+        """Sets an attribute of the module. Need to make simpler"""
+
+        def remove_from(*dicts_or_sets):
+            for d in dicts_or_sets:
+                if name in d:
+                    if isinstance(d, dict):
+                        del d[name]
+                    else:
+                        d.discard(name)
+
+        # print(self.__dict__)
+        if isinstance(value, weakref.ProxyType):
+            remove_from(self.__dict__, self._modules, self._states, self._behaviors)
+            if isinstance(value, Resource):
+                self._resource_registry["name"] = value
+                # log.info(f"{self._resource_registry}")
+            # super().__setattr__(name, value)
+            return
+
+        states = self.__dict__.get("_states")
+        if isinstance(value, State):
+            if states is None:
+                raise AttributeError(
+                    "cannot assign parameters before Module.__init__() call"
+                )
+            remove_from(
+                self.__dict__,
+                self._buffers,
+                self._modules,
+                self._non_persistent_buffers_set,
+            )
+            self.register_state(name, value)
+        elif states is not None and name in states:
+            if value is not None:
+                raise TypeError(
+                    "cannot assign '{}' as state '{}' "
+                    "(svm.synk.State or None expected)".format(
+                        type(value).__name__, name
+                    )
+                )
+            self.register_state(name, value)
+        else:
+            behaviors = self.__dict__.get("_behaviors")
+            if isinstance(value, Behavior):
+                remove_from(
+                    self.__dict__,
+                    self._states,
+                    self._buffers,
+                    self._modules,
+                    self._non_persistent_buffers_set,
+                )
+                self.register_behavior(name, value)
+            elif behaviors is not None and name in behaviors:
+                if value is not None:
+                    raise TypeError(
+                        "cannot assign '{}' as state '{}' "
+                        "(svm.synk.Behavior or None expected)".format(
+                            type(value).__name__, name
+                        )
+                    )
+                self.register_behavior(name, value)
+            else:
+                modules = self.__dict__.get("_modules")
+                if isinstance(value, Module):
+                    self.register_module(name, value)
+
+                elif modules is not None and name in modules:
+                    if value is not None:
+                        raise TypeError(
+                            "cannot assign '{}' as state '{}' "
+                            "(svm.synk.Module or None expected)".format(
+                                type(value).__name__, name
+                            )
+                        )
+                    self.register_module(name, value)
+                else:
+                    super().__setattr__(name, value)
+
+    def __repr_args__(self) -> "ReprArgs":
+        """
+        Returns the attributes to show in __str__, __repr__, and __pretty__ this is generally overridden.
+
+        Can either return:
+        * name - value pairs, e.g.: `[('foo_name', 'foo'), ('bar_name', ['b', 'a', 'r'])]`
+        * or, just values, e.g.: `[(None, 'foo'), (None, ['b', 'a', 'r'])]`
+        """
+        attrs = ((s, getattr(self, s)) for s in self.__dict__.keys())
+        return [(a, v) for a, v in attrs if v is not None]
+
+    def __repr_name__(self) -> str:
+        """
+        Name of the instance's class, used in __repr__.
+        """
+        return self.__class__.__name__
+
+    def __repr_str__(self, join_str: str) -> str:
+        return join_str.join(
+            repr(v) if a is None else f"{a.strip('_')}={v!r}"
+            for a, v in self.__repr_args__()
+        )
+
+    def __str__(self) -> str:
+        return self.__repr__()
+
+    # def __repr__(self) -> str:
+    #     repr_str = ",\n\t"
+    #     return f"{self.__repr_name__()}({self.__repr_str__(repr_str)})"
+    def extra_repr(self) -> str:
+        r"""Set the extra representation of the module
+        To print customized extra information, you should re-implement
+        this method in your own modules. Both single-line and multi-line
+        strings are acceptable.
+        """
+        return ""
+
+    def __repr__(self):
+        # We treat the extra repr like the sub-module, one item per line
+        extra_lines = []
+        extra_repr = self.extra_repr()
+        # empty string will be split into list ['']
+        if extra_repr:
+            extra_lines = extra_repr.split("\n")
+        child_lines = []
+        for key, module in self._modules.items():
+            mod_str = repr(module)
+            mod_str = _addindent(mod_str, 2)
+            child_lines.append("(" + key + "): " + mod_str)
+        lines = extra_lines + child_lines
+
+        main_str = self._get_name() + "("
+        if lines:
+            # simple one-liner info, which most builtin Modules will use
+            if len(extra_lines) == 1 and not child_lines:
+                main_str += extra_lines[0]
+            else:
+                main_str += "\n  " + "\n  ".join(lines) + "\n"
+
+        main_str += ")"
+        return main_str
+
+    def forward(self, *inputs: Any) -> Any:
+        r"""Defines the computation performed at every call.
+        Should be overridden by all subclasses.
+        """
+        raise NotImplementedError()
+
+    def step(self, *inputs: Any) -> Any:
+        r"""Defines the computation performed at every call.
+        Should be overridden by all subclasses.
+        """
+        raise NotImplementedError()
+
+
+class State:
+    pass
+
+
+class Behavior(Module, ABC):
+    def step(self, Any) -> Any:
+        return {}
+
+
+class Resource(Module, ABC):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # would add some declared attributes here.
+
+    def before_step(self) -> None:
+        pass
+
+    def after_step(self) -> None:
+        pass
+
+    def before_agent(self) -> None:
+        pass
+
+    def after_agent(self) -> None:
+        pass
+
+    def before_episode(self) -> None:
+        pass
+
+    def after_episode(self) -> None:
+        pass
+
+
+class Network(State):
+    def __init__(self) -> None:
+        super().__init__()
+
+
+class TestModule(Module):
+    def __init__(self):
+        super(TestModule, self).__init__()
+        self.value = 1
+
+    def forward(self, input):
+        return input + self.value
+
+
+class TestApplyInherit(Module):
+    def __init__(self):
+        super(TestApplyInherit, self).__init__()
+        self.applied = TestModule()
+        self.example_state = Network()
+
+    def forward(self, _input):
+        return _input
+
+
+class ResourceGym(gym.Env, Module, ABC):
+    def __init__(self):
+        super(ResourceGym, self).__init__()
+        self._resources: Dict[str, Resource] = {}
+
+    ## Register a resource to be used by the environment
+    def register_resource(self, name: str, resource: Resource):
+        if name in self._resources:
+            raise ValueError(f"Resource {name} already registered")
+        self._resources[name] = resource
+        self.propagate_resource(name, resource)
+
+    def propagate_resource(self, name: str, resource: Resource):
+        for iter_name, module in self.named_modules():
+            if isinstance(module, type(self)):
+                continue
+
+            if isinstance(module, type(resource)):
+                continue
+
+            module_group = iter_name.split(".")
+            module_name = module_group[-1]
+            if not module_name:
+                continue
+
+            # log.info(split_name)
+            # log.warning(iter_name)
+
+            if name in module_group[:-1]:
+                setattr(module, name, None)
+                setattr(module, name, weakref.proxy(self.resources[name]))
+                continue
+
+            if hasattr(module, module_name):
+                setattr(module, name, None)
+                setattr(module, name, weakref.proxy(self.resources[name]))
+                continue
+
+    @property
+    def resources(self) -> Dict[str, Any]:
+        """Returns a set of resources that are available to the agents and gym."""
+        return self._resources
+
+    def named_resources(self) -> Iterator[Tuple[str, Any]]:
+        """Returns a set of resources that are available to the agents and gym."""
+        for name, resource in self._resources.items():
+            yield name, resource
+
+    def __getattr__(
+        self, name: str
+    ) -> Union[weakref.CallableProxyType, Resource, "Module"]:
+        if name in self._resources:
+            return self._resources[name]
+        return super().__getattr__(name)
+
+    def __dir__(self) -> Iterable[str]:
+        return sorted(list(super().__dir__()) + list(self._resources.keys()))
+
+
+class CalculationResource2(Resource):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def current(self):
+        return 0
+
+
+class CalculationResource(Resource):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def current(self):
+        return 0
+
+
+class ClockResource(Resource):
+    def __init__(self) -> None:
+        super().__init__()
+        self.calculation = CalculationResource()
+
+    def current(self):
+        return 0
+
+
+class AgentGym(ResourceGym, ABC):
+    def __init__(self) -> None:
+        super().__init__()
+        self._agents = []
+        self.clock = ClockResource()
+        self.net = TestApplyInherit()
+
+    def named_agents(self) -> Iterator[Tuple[str, Module]]:
+        for agent in self._agents:
+            yield agent
+
+    @property
+    def agents(self) -> Iterator["Module"]:
+        for _, module in self.named_agents():
+            yield module
+
+    def step(self, action: Any) -> "Tuple[Any, float, bool, dict]":
+        return {}, 0, False, {}
+
+    def reset(self) -> Any:
+        return super().reset()
+
+    def render(self, **kwargs) -> None:
+        pass
+
+
+def main():
+    env = AgentGym()
+    log.info(env.resources)
+
+    # for name, resource in env.named_resources():
+    #     print((name, resource))
+
+    # print(env.resources)
+    # net = TestApplyInherit()
+    # for name, child in net.named_children():
+    #     print((name, child))
+    # print("hello world")
+
+
+if __name__ == "__main__":
+    main()
