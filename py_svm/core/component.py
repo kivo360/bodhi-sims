@@ -4,6 +4,7 @@ from typing import Any
 from . import registry
 from py_svm.core.context import TradingContext, Context
 from py_svm.core.base import Identifiable
+from sqlalchemy.orm.attributes import set_attribute
 
 
 class InitContextMeta(ABCMeta):

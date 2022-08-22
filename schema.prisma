@@ -1,0 +1,34 @@
+datasource db {
+    url      = env("DATABASE_URL_SCALE")
+    provider = "postgresql"
+}
+
+generator db {
+    provider               = "prisma-client-py"
+    interface              = "asyncio"
+    partial_type_generator = "py_svm/scripts/partial_types.py"
+}
+
+model ModuleMeta {
+    id          String   @id @default(cuid())
+    // This is can be a resource, entity, or agent id. Will use properties on subclasses for each type.
+    module_id   String
+    // Type of module. Will use properties on subclasses for each type.
+    module_type String
+    // Totally forgot what this is for. Will delete it if it's not used.
+    is_entry    Boolean
+    // The episode of the simulation this module is in.
+    is_episode  Boolean  @default(true)
+    episode     String?
+    Module      Module[]
+
+    @@map("Meta")
+}
+
+model Module {
+    id       String     @id @default(cuid())
+    fields   Json
+    meta_id  String     @map("meta_id")
+    meta     ModuleMeta @relation(fields: [meta_id], references: [id])
+    timestep Int
+}

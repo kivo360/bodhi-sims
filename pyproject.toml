@@ -17,11 +17,17 @@ devtools = "^0.8.0"
 diskcache = "^5.4.0"
 SQLAlchemy = "^1.4.39"
 mimesis = "^5.5.0"
-ibis-framework = { extras = ["duckdb"], version = "^3.0.2" }
+ibis-framework = {extras = ["duckdb"], version = "^3.1.0"}
 gym = "^0.24.1"
 PyYAML = "^6.0"
 # svm-rs = { path = "./svm-rs", develop = true }
 sqlmodel = "^0.0.6"
+fastcore = "^1.5.17"
+stringcase = "^1.2.0"
+prisma = "^0.6.6"
+eth-utils = "^2.0.0"
+meilisearch-python-async = "^0.26.0"
+dataset = "^1.5.2"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"

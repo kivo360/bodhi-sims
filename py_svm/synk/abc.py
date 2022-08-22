@@ -2,27 +2,15 @@ import abc
 from abc import ABC, abstractmethod
 from collections import UserDict
 
-# from importlib.resources import Resource
-
 # from posixpath import split
-from turtle import forward
 from typing import (
     Any,
     Callable,
     ClassVar,
-    ContextManager,
     Dict,
-    FrozenSet,
-    Generator,
-    Hashable,
-    Iterable,
     Iterator,
-    List,
     MutableMapping,
-    NamedTuple,
     Optional,
-    OrderedDict,
-    Sequence,
     Set,
     Tuple,
     Type,
@@ -32,20 +20,32 @@ from typing import (
 
 import gym
 import pyarrow as pa
-from py_svm.typings import ReprArgs
-from py_svm.utils import hooks
-from py_svm.utils.hooks import RemovableHandle
-from pydantic import fields
-from pydantic import main as mainpydantic
-from pydantic import mypy
-from pydantic.main import ModelMetaclass
 from py_svm import log
-
-# from sqlalchemy.orm import registry
-import weakref
 from py_svm.core import registry
+from pydantic import BaseConfig, BaseModel, Extra, Field
+from pydantic.fields import FieldInfo
+from pydantic.main import ModelMetaclass
+import anyio
+from anyio.from_thread import start_blocking_portal, BlockingPortal
 
-T = TypeVar("T", bound="Module")
+# from importlib.resources import Resource
+
+
+_T = TypeVar("_T")
+
+
+def __dataclass_transform__(
+    *,
+    eq_default: bool = True,
+    order_default: bool = False,
+    kw_only_default: bool = False,
+    field_descriptors: Tuple[Union[type, Callable[..., Any]], ...] = (()),
+) -> Callable[[_T], _T]:
+    return lambda a: a
+
+
+from pydantic.fields import Undefined
+from pydantic.typing import resolve_annotations
 
 
 class DatabaseAPI(MutableMapping[bytes, bytes], ABC):
@@ -141,6 +141,13 @@ class BaseDB(DatabaseAPI, ABC):
         ...
 
 
+async def long_running_task(index):
+    await anyio.sleep(1)
+    print(f"Task {index} running...")
+    await anyio.sleep(index)
+    return f"Task {index} return value"
+
+
 class Context(UserDict):
     """A context that is injected into every instance of a class that is
     a subclass of `Component`.
@@ -181,45 +188,125 @@ class ContextualizedMixin(object):
         self._context = context
 
 
-class InitContext(abc.ABCMeta):
-    def __call__(cls, *args, **kwargs):
+@__dataclass_transform__(kw_only_default=True, field_descriptors=(Field, FieldInfo))
+class InitContext(ModelMetaclass):
 
-        instance = cls.__new__(cls, *args, **kwargs)
+    module_type = None
+
+    def __new__(
+        cls,
+        name: str,
+        bases: Tuple[Type[Any], ...],
+        class_dict: Dict[str, Any],
+        **kwargs: Any,
+    ):
+        dict_for_pydantic = {}
+        original_annotations = resolve_annotations(
+            class_dict.get("__annotations__", {}), class_dict.get("__module__", None)
+        )
+        pydantic_annotations = {}
+        # relationship_annotations = {}
+        for k, v in class_dict.items():
+            dict_for_pydantic[k] = v
+        dict_used = {
+            **dict_for_pydantic,
+            "__weakref__": None,
+            "__annotations__": pydantic_annotations,
+        }
+        # Duplicate logic from Pydantic to filter config kwargs because if they are
+        # passed directly including the registry Pydantic will pass them over to the
+        # superclass causing an error
+        allowed_config_kwargs: Set[str] = {
+            key
+            for key in dir(BaseConfig)
+            if not (
+                key.startswith("__") and key.endswith("__")
+            )  # skip dunder methods and attributes
+        }
+        pydantic_kwargs = kwargs.copy()
+        config_kwargs = {
+            key: pydantic_kwargs.pop(key)
+            for key in pydantic_kwargs.keys() & allowed_config_kwargs
+        }
+        new_cls = super().__new__(cls, name, bases, dict_used, **config_kwargs)
+        new_cls.__annotations__ = {
+            **pydantic_annotations,
+            **new_cls.__annotations__,
+        }
+
+        def get_config(name: str) -> Any:
+            config_class_value = getattr(new_cls.__config__, name, Undefined)  # type: ignore
+            if config_class_value is not Undefined:
+                return config_class_value
+            kwarg_value = kwargs.get(name, Undefined)
+            if kwarg_value is not Undefined:
+                return kwarg_value
+            return Undefined
+
+        return new_cls
+
+    def __call__(cls, *args: Any, **kwds: Any) -> Any:
+        instance = cls.__new__(cls, *args, **kwds)
+        if hasattr(instance, "__pre_init__"):
+            instance.__pre_init__(*args, **kwds)
+        instance.__init__(*args, **kwds)
+        if hasattr(instance, "__post_init__"):
+            instance.__post_init__(*args, **kwds)  # type: ignore
         setattr(instance, "context", Context())
-        instance.__init__(*args, **kwargs)
+        model_type = instance.module_type
+        registry.register(instance, model_type)  # type: ignore
+        # if model_type is not None:
         return instance
 
 
-class Module(ABC, ContextualizedMixin, metaclass=InitContext):
-    def __init_subclass__(cls) -> None:
-        super().__init_subclass__()
+class Module(BaseModel, ContextualizedMixin, metaclass=InitContext, extra=Extra.allow):
+    module_type: ClassVar[Optional[str]] = ""
 
-        return
+    def __post_init__(self) -> None:
+        pass
+        # log.debug(self.module_type)
+        # log.success(self.module_type)
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, **data) -> None:
+        super().__init__(**data)
 
+    def get_resource(self, name):
+        return registry.get_module("resource", name)
 
-_resource_registry = {}
-
-
-class Resource(Module):
-    def __init_subclass__(cls) -> None:
-        super().__init_subclass__()
-        _resource_registry[cls.__name__] = cls
-        return
+    def modules(self, module_type: str) -> Iterator["Module"]:
+        return registry.get_modules(module_type)  # type: ignore
 
     @property
     def resources(self) -> Dict[str, "Resource"]:
-        return _resource_registry
+        return list(self.modules("resource"))  # type: ignore
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        returned = super().__setattr__(name, value)
+        self.log_change(name, value)
+        return returned
+
+    def log_change(self, name: str, value: Any) -> None:
+        # log.debug(f"Setting '{name}' to '{value}'")
+        pass
 
 
-class ClockResource(Resource):
+class Resource(Module):
+    module_type: ClassVar[str] = "resource"
+
+
+class Behavior(Module):
+    module_type: ClassVar[str] = "behavior"
+
+
+class Clock(Resource):
     def __init__(self) -> None:
         super().__init__()
 
-    # def __call__(self) -> "Clock":
-    #     return Clock()
+
+class Network(Resource):
+    def __init__(self) -> None:
+        super().__init__()
+        self.fake_network = {}
 
 
 class AgentEnv(gym.Env, ABC):
@@ -230,22 +317,20 @@ class AgentEnv(gym.Env, ABC):
         pass
 
 
-def main():
+async def main():
+    from prisma import Prisma
+
+    db = Prisma()
+    log.success("connecting")
+    await db.connect()
+
     env = AgentEnv()
+    network = Network()
+    clock = Clock()
 
-    # env = Resource()
-    # log.success(env.resources)
-    log.info(env)
-
-    # for name, resource in env.named_resources():
-    #     print((name, resource))
-
-    # print(env.resources)
-    # net = TestApplyInherit()
-    # for name, child in net.named_children():
-    #     print((name, child))
-    # print("hello world")
+    await db.disconnect()
+    log.error("disconnecting")
 
 
 if __name__ == "__main__":
-    main()
+    anyio.run(main)
