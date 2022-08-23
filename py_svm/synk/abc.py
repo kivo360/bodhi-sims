@@ -1,35 +1,24 @@
+# Standard Library
 import abc
-from abc import ABC, abstractmethod
+from abc import ABC
+from abc import abstractmethod
+# from posixpath import split
+from typing import (Any, Set, Dict, Type, Tuple, Union, TypeVar, Callable,
+                    ClassVar, Iterator, Optional, MutableMapping)
 from collections import UserDict
 
-# from posixpath import split
-from typing import (
-    Any,
-    Callable,
-    ClassVar,
-    Dict,
-    Iterator,
-    MutableMapping,
-    Optional,
-    Set,
-    Tuple,
-    Type,
-    TypeVar,
-    Union,
-)
-
-import gym
-import pyarrow as pa
-from py_svm import log
-from py_svm.core import registry
-from pydantic import BaseConfig, BaseModel, Extra, Field
-from pydantic.fields import FieldInfo
-from pydantic.main import ModelMetaclass
 import anyio
-from anyio.from_thread import start_blocking_portal, BlockingPortal
+from pydantic import Extra
+from pydantic import Field
+from pydantic import BaseModel
+from pydantic import BaseConfig
+import pyarrow as pa
+from pydantic.main import ModelMetaclass
+from pydantic.fields import FieldInfo
+
+from py_svm.core import registry
 
 # from importlib.resources import Resource
-
 
 _T = TypeVar("_T")
 
@@ -188,7 +177,8 @@ class ContextualizedMixin(object):
         self._context = context
 
 
-@__dataclass_transform__(kw_only_default=True, field_descriptors=(Field, FieldInfo))
+@__dataclass_transform__(kw_only_default=True,
+                         field_descriptors=(Field, FieldInfo))
 class InitContext(ModelMetaclass):
 
     module_type = None
@@ -202,8 +192,8 @@ class InitContext(ModelMetaclass):
     ):
         dict_for_pydantic = {}
         original_annotations = resolve_annotations(
-            class_dict.get("__annotations__", {}), class_dict.get("__module__", None)
-        )
+            class_dict.get("__annotations__", {}),
+            class_dict.get("__module__", None))
         pydantic_annotations = {}
         # relationship_annotations = {}
         for k, v in class_dict.items():
@@ -217,11 +207,9 @@ class InitContext(ModelMetaclass):
         # passed directly including the registry Pydantic will pass them over to the
         # superclass causing an error
         allowed_config_kwargs: Set[str] = {
-            key
-            for key in dir(BaseConfig)
-            if not (
-                key.startswith("__") and key.endswith("__")
-            )  # skip dunder methods and attributes
+            key for key in dir(BaseConfig)
+            if not (key.startswith("__") and key.endswith("__")
+                    )  # skip dunder methods and attributes
         }
         pydantic_kwargs = kwargs.copy()
         config_kwargs = {
@@ -235,7 +223,8 @@ class InitContext(ModelMetaclass):
         }
 
         def get_config(name: str) -> Any:
-            config_class_value = getattr(new_cls.__config__, name, Undefined)  # type: ignore
+            config_class_value = getattr(new_cls.__config__, name,
+                                         Undefined)  # type: ignore
             if config_class_value is not Undefined:
                 return config_class_value
             kwarg_value = kwargs.get(name, Undefined)
@@ -259,13 +248,14 @@ class InitContext(ModelMetaclass):
         return instance
 
 
-class Module(BaseModel, ContextualizedMixin, metaclass=InitContext, extra=Extra.allow):
+class Module(BaseModel,
+             ContextualizedMixin,
+             metaclass=InitContext,
+             extra=Extra.allow):
     module_type: ClassVar[Optional[str]] = ""
 
     def __post_init__(self) -> None:
         pass
-        # log.debug(self.module_type)
-        # log.success(self.module_type)
 
     def __init__(self, **data) -> None:
         super().__init__(**data)
@@ -298,39 +288,43 @@ class Behavior(Module):
     module_type: ClassVar[str] = "behavior"
 
 
-class Clock(Resource):
-    def __init__(self) -> None:
-        super().__init__()
+class Entity(Module):
+    module_type: ClassVar[str] = "entity"
 
 
-class Network(Resource):
-    def __init__(self) -> None:
-        super().__init__()
-        self.fake_network = {}
+class Agent(Module):
+    module_type: ClassVar[Optional[str]] = "agent"
 
 
-class AgentEnv(gym.Env, ABC):
-    def __init__(self) -> None:
-        super().__init__()
+# class Clock(Resource):
+#     def __init__(self) -> None:
+#         super().__init__()
 
-    def reset(self):
-        pass
+# class Network(Resource):
+#     def __init__(self) -> None:
+#         super().__init__()
+#         self.fake_network = {}
 
+# class AgentEnv(gym.Env, ABC):
+#     def __init__(self) -> None:
+#         super().__init__()
 
-async def main():
-    from prisma import Prisma
+#     def reset(self):
+#         pass
 
-    db = Prisma()
-    log.success("connecting")
-    await db.connect()
+# async def main():
+#     from prisma import Prisma
 
-    env = AgentEnv()
-    network = Network()
-    clock = Clock()
+#     db = Prisma()
+#     log.success("connecting")
+#     await db.connect()
 
-    await db.disconnect()
-    log.error("disconnecting")
+#     env = AgentEnv()
+#     network = Network()
+#     clock = Clock()
 
+#     await db.disconnect()
+#     log.error("disconnecting")
 
-if __name__ == "__main__":
-    anyio.run(main)
+# if __name__ == "__main__":
+#     anyio.run(main)

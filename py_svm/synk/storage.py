@@ -1,41 +1,25 @@
 # from py_svm.synk.abc import DatabaseAPI
-import collections
-from itertools import (
-    count,
-)
-from pathlib import Path
-from typing import (
-    Any,
-    Dict,
-    Iterator,
-    List,
-    MutableMapping,
-    Optional,
-    Set,
-    Union,
-    Callable,
-    cast,
-)
+# Standard Library
 import abc
 import uuid
+from typing import (Any, cast, Dict, List, Union, Callable, Iterator, Optional,
+                    MutableMapping)
+from pathlib import Path
+from itertools import count
+from contextvars import Context
+from contextvars import ContextVar
+from contextvars import copy_context
+
 import anyio
-from diskcache import Cache
 from loguru import logger as log
-from pydantic import BaseModel
-from contextvars import ContextVar, Context, copy_context
-from eth_utils.toolz import (
-    first,  # type: ignore
-    nth,  # type: ignore
-)
-from eth_utils import (
-    ValidationError,  # type: ignore
-)
-from py_svm.synk.models import Metadata
-from py_svm.typings import JournalDBCheckpoint
 from devtools import debug
-from prisma import Prisma, Json
-from meilisearch_python_async import Client
-from meilisearch_python_async.models.settings import MeiliSearchSettings, Faceting
+from diskcache import Cache
+from eth_utils import ValidationError  # type: ignore
+from eth_utils.toolz import nth  # type: ignore
+from eth_utils.toolz import first  # type: ignore
+
+from py_svm.typings import JournalDBCheckpoint
+from py_svm.synk.models import Metadata
 
 
 class DeletedEntry:
@@ -60,6 +44,7 @@ ChangesetDict = Dict[bytes, ChangesetValue]
 
 
 class DatabaseAPI(MutableMapping, abc.ABC):
+
     def __init__(self):
         pass
 
@@ -111,6 +96,7 @@ class DatabaseAPI(MutableMapping, abc.ABC):
 
 
 class CacheDB(DatabaseAPI):
+
     def __init__(self):
         self.cache = {}
 
@@ -131,6 +117,7 @@ class CacheDB(DatabaseAPI):
 
 
 class LocalDB(DatabaseAPI):
+
     def __init__(self):
         self.cache = {}
 
@@ -151,6 +138,7 @@ class LocalDB(DatabaseAPI):
 
 
 class AnalysisDB(DatabaseAPI):
+
     def __init__(self):
         self.cache = {}
 
@@ -171,11 +159,12 @@ class AnalysisDB(DatabaseAPI):
 
 
 class StorageLayer(DatabaseAPI):
+
     def __init__(
-        self,
-        cache: CacheDB = CacheDB(),
-        local: LocalDB = LocalDB(),
-        analyze: AnalysisDB = AnalysisDB(),
+            self,
+            cache: CacheDB = CacheDB(),
+            local: LocalDB = LocalDB(),
+            analyze: AnalysisDB = AnalysisDB(),
     ):
         self._cache = cache
         self._local = local
@@ -222,6 +211,7 @@ class StorageLayer(DatabaseAPI):
 
 
 class ContextManager:
+
     def __init__(self):
         self._ctx_vars: Dict[str, Any] = {}
         self.cxt = Context()
@@ -256,6 +246,7 @@ class ContextManager:
 
 
 class SearchDB(DatabaseAPI):
+
     def __init__(self):
 
         self.cache = {}
@@ -329,6 +320,7 @@ class StorageModel(DatabaseAPI):
 
 
 class Experiment:
+
     def __init__(self, cache_location: str | Path = Path("/tmp/experiment")):
         self.cache_path = Path(cache_location)
         self.cache_path.mkdir(parents=True, exist_ok=True)
@@ -353,7 +345,8 @@ class Experiment:
 
             is_skip = True
 
-        if ((self.trial_count % 5) == 0 or (self.trial_count == 0)) and not is_skip:
+        if ((self.trial_count % 5) == 0 or
+            (self.trial_count == 0)) and not is_skip:
             self.cache[self.episode_str] = str(uuid.uuid4())
         return self.cache[self.episode_str]
 
@@ -383,8 +376,6 @@ class Experiment:
 
 
 class BaseHandler(abc.ABC):
-    def __init__(self):
-        pass
 
     @abc.abstractmethod
     def check(self) -> bool:
@@ -392,34 +383,58 @@ class BaseHandler(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def save(self, data):
+    def save(self, data: dict):
         """Upserts data along side context"""
         raise NotImplementedError
 
     @abc.abstractmethod
-    def last(self):
+    def latest(self, query: dict = {}):
 
         raise NotImplementedError
 
     @abc.abstractmethod
-    def last_by(self, timestep: int = -1, query_dict: dict = {}):
-
+    def latest_by(self, timestep: int = -1, query_dict: dict = {}):
         raise NotImplementedError
 
     @abc.abstractmethod
     def many(self, limit: int = 100):
         raise NotImplementedError
 
-    def save_many(self, data: dict):
+    @abc.abstractmethod
+    def save_many(self, data: List[Dict[str, Any]]):
         raise NotImplementedError
 
-    def count(self) -> int:
+    @abc.abstractmethod
+    def count(self, query: Dict[str, Any] = {}) -> int:
         raise NotImplementedError
+
+    def find(self, query: Dict[str, Any] = {}):
+        pass
+
+    def find_unique(self, query: Dict[str, Any] = {}):
+        pass
+
+    def delete_one(self, query: Dict[str, Any] = {}):
+        pass
+
+    def delete_many(self, query: Dict[str, Any] = {}):
+        pass
 
 
 class DatabaseHandler(BaseHandler):
+
     def __init__(self, processor):
         self._processor = processor
+        self._context = ContextManager()
+
+    @property
+    def context(self):
+        """The context property."""
+        return self._context
+
+    @context.setter
+    def context(self, value):
+        self._context = value
 
     @property
     def processor(self):
@@ -430,20 +445,41 @@ class DatabaseHandler(BaseHandler):
     def processor(self, value):
         self._processor = value
 
-    def between(self, start, end):
+    def between(self, start: int, end: int, query: dict = {}):
         pass
 
     def count(self) -> int:
+        """Given the metadata context, return the number of items in the"""
         return 0
+
+    def latest(self, query: dict = {}):
+        return super().latest()
+
+    def latest_by(self, timestep: int = -1, query: dict = {}):
+        return super().latest_by(timestep, query)
+
+    def find(self, query: dict = {}):
+        pass
+
+    def find_unique(self, query: dict = {}):
+        pass
+
+    def save(self, dict: dict):
+        pass
+
+    def many(self, query: dict = {}):
+        pass
+
+    def many_by(self, timestep: int = -1, query: dict = {}):
+        pass
 
 
 async def main():
-    from prisma import Prisma, Json
-    from meilisearch_python_async import Client
-    from meilisearch_python_async.models.settings import MeiliSearchSettings, Faceting
-    import dataset
+    # Standard Library
     import uuid
     from pathlib import Path
+
+    import dataset
     from diskcache import Cache
 
     ctx_manager = ContextManager()
@@ -461,16 +497,14 @@ async def main():
     cache = Cache(playpath)
     db = dataset.connect("sqlite:///mydatabase.db")
     table = db.get_table("state")
-    table.create_index(
-        [
-            "episode",
-            "module_type",
-            "module_class",
-            "timestep",
-            "is_episode",
-            "module_id",
-        ]
-    )
+    table.create_index([
+        "episode",
+        "module_type",
+        "module_class",
+        "timestep",
+        "is_episode",
+        "module_id",
+    ])
     # with cache as session:
     count = cache.get("test_count", 0)
 
@@ -489,8 +523,7 @@ async def main():
                     module_id=TEST_MODULE_ID,
                     is_episode=True,
                     timestep=expr.timestep,
-                )
-            )
+                ))
 
     # Get the last
     debug(
@@ -499,17 +532,13 @@ async def main():
                 timestep={">=": 700},
                 episode=experiment.episode,
                 module_class="agent",
-            )
-        )
-    )
+            )))
 
 
 if __name__ == "__main__":
     anyio.run(main)
 
-
 # def main():
-
 
 # if __name__ == "__main__":
 #     main()

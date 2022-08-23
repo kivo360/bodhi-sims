@@ -6,7 +6,6 @@ authors = ["Kevin H. <kevin@autoworkz.org>"]
 
 [tool.poetry.dependencies]
 python = ">=3.9,<3.11"
-retworkx = { extras = ["all"], version = "^0.11.0" }
 pydantic = { extras = ["dotenv"], version = "^1.9.1" }
 pyarrow = { extras = ["all"], version = "^8.0.0" }
 xxhash = "^3.0.0"
@@ -17,7 +16,6 @@ devtools = "^0.8.0"
 diskcache = "^5.4.0"
 SQLAlchemy = "^1.4.39"
 mimesis = "^5.5.0"
-ibis-framework = {extras = ["duckdb"], version = "^3.1.0"}
 gym = "^0.24.1"
 PyYAML = "^6.0"
 # svm-rs = { path = "./svm-rs", develop = true }
@@ -28,6 +26,10 @@ prisma = "^0.6.6"
 eth-utils = "^2.0.0"
 meilisearch-python-async = "^0.26.0"
 dataset = "^1.5.2"
+orjson = "^3.7.12"
+wrapt = "^1.14.1"
+deepdow = "^0.2.2"
+typer = {extras = ["all"], version = "^0.6.1"}
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
@@ -35,7 +37,31 @@ mypy = "^0.961"
 black = { version = "^22.6.0", allow-prereleases = true }
 jupyterlab = { extras = ["all"], version = "^3.4.3" }
 torch = "^1.12.1"
+yapf = "^0.32.0"
+autopep8 = "^1.7.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+
+[tool.isort]
+add_imports = ["from loguru import logger as log"]
+profile = "google"
+src_paths = ["py_svm", "test"]
+length_sort = true
+length_sort_sections = ["future", "stdlib"]
+import_heading_stdlib = 'Standard Library'
+import_heading_local = 'Standard Library'
+balanced_wrapping = true
+multi_line_output = 5
+
+[tool.yapf]
+based_on_style = "google"
+arithmetic_precedence_indication = true
+align_closing_bracket_with_visual_indent = true
+coalesce_brackets = true
+# dedent_closing_brackets = true
+# [tool.isort]
+# profile = "hug"
+# src_paths = ["py-svm", "test"]
