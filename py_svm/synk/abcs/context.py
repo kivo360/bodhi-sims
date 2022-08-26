@@ -8,10 +8,13 @@ from contextvars import copy_context
 
 from eth_utils import ValidationError  # type: ignore
 from eth_utils.toolz import nth  # type: ignore
-from eth_utils.toolz import first  # type: ignore
+from eth_utils.toolz import first
+from pydantic import Field  # type: ignore
+from pydantic.fields import FieldInfo  # type: ignore
 
 from py_svm.synk.models import Metadata
 import devtools as dtoolz
+from py_svm.utils import dataclass_transform
 
 
 class ContextControl:
@@ -64,7 +67,8 @@ class UserContext(UserDict):
         return "<{}: {}>".format(self.__class__.__name__, ", ".join(data))
 
 
-class ContextualizedMixin(object):
+@dataclass_transform(kw_only_default=True, field_descriptors=(Field, FieldInfo))
+class ContextualizedMixin:
     """A mixin that is to be mixed with any class that must function in a
     contextual setting.
     """

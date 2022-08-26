@@ -1,5 +1,5 @@
 from typing import ClassVar, Optional
-from .module import Module
+from ..module import Module
 from py_svm.utils import get_uuid
 
 

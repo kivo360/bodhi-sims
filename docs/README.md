@@ -38,6 +38,10 @@ This can be problematic when we want to have an entity that has private methods.
 
 ### Solution Exploration
 
+#### Notes to Consider
+
+1. Manipulating information dynamically can be done with a vertical table. Though one should be weary of doing so.
+2. Can go distributed using Ray and Hazelcast. Would do best to try coming up with your own server. It would limit processing speed at some point, but would allow for a scalable design.
 
 #### GDScript
 
@@ -81,7 +85,10 @@ This showcases a couple of things:
 3. Adding instances to the game/simulation.
 4. Changing state of the new instance on create.
 
-This is a beautiful way of thinking. While I could think about my problems using ECS, this would help me think about issues in terms of scenes. GDscript has many other capabilities, like `get_node(node_name)`, and `get_reference(object_name)`
+This is a beautiful way of thinking. While I could think about my problems using ECS, this would help me think about issues in terms of scenes. GDscript has many other capabilities, like `get_node(node_name)`, and `get_reference(object_name)`.
+
+
+
 
 #### Native Logging Capability
 
@@ -474,12 +481,143 @@ Actually, here's a set of question:
 2. If so, when would I consider it count?
    1. Is there some kind set of rules I need to apply to modules? (similar to PyTorch)
 3. Would I select historical records by using some ORM-like selection from within the module?
+4. The answer to the first question is yes, but not always.
+5. 
 
+Thank the sweet lord almighty. I happened to look at one of three remaining sources and believe I figured out how to structure the code. While I'll still take inspiration from my predecessors. The style is straightforward and borrowed from [PieCash](https://github.com/sdementen/piecash/blob/ec30cf469198cccf35f7ba968f889d360cfe1824/piecash/core/account.py#L169). They do a really good job of using python features to clean it up.
 
 ```py
+# 
+root_account_guid = Column(
+    "root_account_guid",
+    VARCHAR(length=32),
+    ForeignKey("accounts.guid"),
+    nullable=False,
+)
+root_template_guid = Column(
+    "root_template_guid",
+    VARCHAR(length=32),
+    ForeignKey("accounts.guid"),
+    nullable=False,
+)
 
+# relation definitions
+root_account = relation(
+    "Account",
+    # back_populates='root_book',
+    foreign_keys=[root_account_guid],
+)
+root_template = relation("Account", foreign_keys=[root_template_guid])
+
+uri = None
+session = None
+
+# link options to KVP
+use_trading_accounts = kvp_attribute(
+    "options/Accounts/Use Trading Accounts",
+    from_gnc=lambda v: v == "t",
+    to_gnc=lambda v: "t",
+    default=False,
+)
+
+placeholder = mapped_to_slot_property(
+_placeholder,
+slot_name="placeholder",
+slot_transform=lambda v: "true" if v else None,
+)
+
+# relation definitions
+commodity = relation("Commodity", back_populates="accounts")
+children = relation(
+    "Account",
+    back_populates="parent",
+    cascade="all, delete-orphan",
+    collection_class=CallableList,
+)
+parent = relation(
+    "Account",
+    back_populates="children",
+    remote_side=guid,
+)
+splits = relation(
+    "Split",
+    back_populates="account",
+    cascade="all, delete-orphan",
+    collection_class=CallableList,
+)
+lots = relation(
+    "Lot",
+    back_populates="account",
+    cascade="all, delete-orphan",
+    collection_class=CallableList,
+)
+budget_amounts = relation(
+    "BudgetAmount",
+    back_populates="account",
+    cascade="all, delete-orphan",
+    collection_class=CallableList,
+)
+scheduled_transaction = relation(
+    "ScheduledTransaction",
+    back_populates="template_account",
+    cascade="all, delete-orphan",
+    uselist=False,
+)
+```
+
+Notice how instruments are defined. They're defined by both a type and set on call. We would set the actual inital values of modules within the `reset` function. 
+
+```py
+from svm.core import Payload
+
+# An alternative to this implementation is to use the Entity class. The entity class would inherit from a super type where there needs to be an identity attached before moving forward. In tensortrade that's called a Indentifiable.
 class Portfolio(Module):
-    pass
+    # Price is a type of module. It has multiple states that are saved for a given time. 
+    # State that there are multiple prices for a given portfolio
+    initial_balance: float
+    initial_net_worth: float | None = None
+    
+    base_instrument: Instrument = Instrument(related=True)
+    instruments: Instrument = Instrument(related=True, many=True)
+    
+    def __init__(self, **kwargs):
+        # Realizing I might need to change how certain modules are run. I would likely exclude modules that match certain criteria.
+        # Would need to add a default method to modules. Would be like a component class.
+        self.base_instrument = self.default('initial_currency')
+        self.initial_balance = self.default('initial_balance')
+
+
+    
+    
+    
+    def balance(self, instrument: Instrument):
+        pass
+
+    def locked_balance(self, instrument: Instrument):
+        pass
+
+    def total_balance(self, instrument: Instrument):
+        pass
+
+
+    def step(self, data: Payload):
+        # Figured out how to wrap this object.
+        pass
+    
+    def reset(self) -> None:
+        """Resets the portfolio."""
+        self._initial_balance = self.base_balance
+        self._initial_net_worth = None
+        self._net_worth = None
+        self._performance = None
+
+        self.ledger.reset()
+        for wallet in self._wallets.values():
+            wallet.reset()
+
+
+
+
 
 ```
 ## Graph Network
@@ -495,10 +633,12 @@ book = Book(id='fef25e46-409d-486a-81ac-c238dd2a569b', name='The Passion', price
 
 
 # Uses keyword args to add graph attributes
-# Eager creation of an edge with two existing nodes.
+# Eager creation of an edge with two existing nodes. If they don't already exist, lazily wait to create them.
 
 user >> gl.link('read', timestamp='-400H', attr2='value2', ...) >> book
 user >> gl.link('sold', price=19.20, timestamp='-20H') >> book
+
+
 ```
 
 Would create complex queries by using an internal DSL.

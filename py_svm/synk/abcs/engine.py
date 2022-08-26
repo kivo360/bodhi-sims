@@ -156,10 +156,10 @@ class HTTPEngine(AbstractEngine):
         self.session = httpx.Client(
             base_url=self.url,
             headers=_headers,
-            event_hooks={
-                'request': [log_request],
-                'response': [log_response]
-            },
+            # event_hooks={
+            #     'request': [log_request],
+            #     'response': [log_response]
+            # },
             **_auth,
         )
 
@@ -213,40 +213,47 @@ class HTTPEngine(AbstractEngine):
         return f"{self.__class__.__name__}(url={self.url}, auth={self.is_auth}, username={self.username}, password={'*' * min(len(self.password)*5, 9)})"  # type: ignore
 
 
+class SurrealHeaders(HeadersBuilder):
+    ns: str = 'test'
+    db: str = 'test'
+
+    def get_default_headers(self) -> dict:
+        return {
+            'Content-Type': 'application/json',
+            'NS': self.ns,
+            'DB': self.db,
+        }
+
+
+class SurrealEngine(HTTPEngine):
+
+    def __init__(self,
+                 url: str,
+                 username: str | None = None,
+                 password: str | None = None,
+                 default_headers: SurrealHeaders = SurrealHeaders()):
+        super().__init__(url, username, password, default_headers)
+
+    def execute(self, query: str, params: Optional[dict] = None) -> dict:
+        with log.catch(onerror=log.error,
+                       message="Error executing query",
+                       default=dict()):
+            return self.post('/sql', data=query).json()  # type: ignore
+        raise RuntimeError("Error executing query")
+
+
+#
+
+
 def main():
+    surreal = SurrealEngine("http://0.0.0.0:8000", "root", "root")
 
-    class SurrealHeaders(HeadersBuilder):
-        ns: str = 'test'
-        db: str = 'test'
-
-        def get_default_headers(self) -> dict:
-            return {
-                'Content-Type': 'application/json',
-                'NS': self.ns,
-                'DB': self.db,
-            }
-
-    class SurrealEngine(HTTPEngine):
-
-        def execute(self, query: str, params: Optional[dict] = None) -> dict:
-            with log.catch(onerror=log.error,
-                           message="Error executing query",
-                           default=dict()):
-                return self.post('/sql', data=query)  # type: ignore
-
-    http_engine = SurrealEngine("http://0.0.0.0:8000",
-                                "root",
-                                "root",
-                                default_headers=SurrealHeaders())
-
-    with http_engine as engine:
+    with surreal as engine:
         engine.execute("SELECT * FROM author, article, account;")
         engine.execute("INFO FOR DB;")
     import devtools
-    # devtools.debug(inspect.signature(http_engine.session.post))
 
-    # http_engine.connect()
-    log.debug(http_engine)
+    log.debug(surreal)
     print("hello world")
 
 

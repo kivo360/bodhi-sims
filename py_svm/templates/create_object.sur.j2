@@ -1,0 +1,5 @@
+
+CREATE {{module_name}} SET
+{% for name, value in module_record.items() -%}
+{{name}} = {{value}},
+{% endfor %}

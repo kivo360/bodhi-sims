@@ -72,6 +72,7 @@ class InitContext(ModelMetaclass):
             key: pydantic_kwargs.pop(key)
             for key in pydantic_kwargs.keys() & allowed_config_kwargs
         }
+        processor = dict_used.pop('processor', None)
         new_cls = super().__new__(cls, name, bases, dict_used, **config_kwargs)
         new_cls.__annotations__ = {
             **pydantic_annotations,
@@ -90,29 +91,46 @@ class InitContext(ModelMetaclass):
                 return kwarg_value
             return Undefined
 
+        # if processor is not None:
+        #     log.info(processor)
+        # dict_fields = new_cls.__dict__.get('__fields__', {})
+        # model_field = dict_fields.get('processor')
+        # model_field.default = processor
+        # log.info(model_field)
+
+        # log.debug(new_cls.__dict__)
+        # if 'processor' in new_cls.__dict__.get('__fields__', {}):
+        #     new_cls.__dict__['__fields__']['processor'].default = processor
+        # log.warning(new_cls.__dict__.get("__fields__", {}))
         return new_cls
 
     def __call__(cls, *args: Any, **kwds: Any) -> Any:
         instance = cls.__new__(cls, *args, **kwds)
         if hasattr(instance, "__pre_init__"):
+
             instance.__pre_init__(*args, **kwds)  # type: ignore
         instance.__init__(*args, **kwds)
         if hasattr(instance, "__post_init__"):
             instance.__post_init__(*args, **kwds)  # type: ignore
         setattr(instance, "context", ContextControl())
+
         model_type = instance.module_type
         registry.register(instance, model_type)  # type: ignore
         # if model_type is not None:
         return instance
 
 
+@dataclass_transform(kw_only_default=True, field_descriptors=(Field, FieldInfo))
 class ModuleBase(BaseModel,
                  ContextualizedMixin,
                  metaclass=InitContext,
                  extra=Extra.allow):
     module_type: ClassVar[Optional[str]] = ""
 
-    def __post_init__(self) -> None:
+    def __post_init__(self, **kwds) -> None:
+        pass
+
+    def __pre_init__(self, **kwds) -> None:
         pass
 
     def __init__(self, **data) -> None:

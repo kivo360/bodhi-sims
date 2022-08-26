@@ -1,18 +1,26 @@
 import abc
-from distutils.log import debug
+import json
 from pydantic import BaseModel
 from typing import Dict, List, Optional, ClassVar, Any
-from py_svm.synk.abcs.engine import AbstractEngine
+from py_svm.synk.abcs.engine import AbstractEngine, SurrealEngine
 import torch
 import devtools as dvz
+from loguru import logger as log
+from jinja2 import Environment, PackageLoader
+
+jinja_env = Environment(loader=PackageLoader("py_svm", "templates"))
+
+
+def generate_query(module_name: str, variables: Dict[str, Any]) -> str:
+
+    return query
 
 
 class BaseActions(BaseModel, abc.ABC):
 
-    processor: AbstractEngine
-
     class Config:
         arbitrary_types_allowed = True
+        extra = "allow"
 
     @abc.abstractmethod
     def check(self) -> bool:
@@ -90,6 +98,11 @@ class BaseActions(BaseModel, abc.ABC):
 
 
 class DBActions(BaseActions):
+    __filterable_fields__ = ['context']
+
+    @property
+    def engine(self) -> AbstractEngine:
+        return SurrealEngine('http://localhost:8000', 'root', 'root')
 
     def between(self, start: int, end: int, query: dict = {}):
         pass
@@ -98,9 +111,26 @@ class DBActions(BaseActions):
         """Checks that the required context variables are set."""
         raise NotImplementedError
 
-    def save(self, data: dict):
+    def save(self, alter: dict = {}):
         """Upserts data along side context"""
-        raise NotImplementedError
+        input_values = self.dict(exclude=set(self.__filterable_fields__))
+        input_values.update(alter)
+        # Would create the query here.
+        create_query = jinja_env.get_template('create_object.sur.j2')
+        module_type = input_values.pop('module_type')
+        # dvz.debug(input_values)
+        # dvz.debug(module_type)
+        query = create_query.render(module_name=module_type,
+                                    module_record=input_values)
+        query = query.replace("\n", " ").strip().strip(',')
+
+        log.info(query)
+        query = f"{query};"
+        log.info(query)
+        info = self.engine.execute(query)
+        log.error(info)
+        # print(info[0])
+        # print(self.__filterable_fields__)
 
     def latest(self, query: dict = {}):
 
@@ -122,19 +152,23 @@ class DBActions(BaseActions):
         raise NotImplementedError
 
     def find(self, query: Dict[str, Any] = {}):
-        pass
+        raise NotImplementedError
 
     def find_unique(self, query: Dict[str, Any] = {}):
-        pass
+        raise NotImplementedError
 
     def delete_one(self, query: Dict[str, Any] = {}):
-        pass
+        raise NotImplementedError
 
     def delete_many(self, query: Dict[str, Any] = {}):
-        pass
+        raise NotImplementedError
 
     def reset(self):
-        pass
+        """Load the Module State from the database if it exist"""
+        raise NotImplementedError
+
+    def refresh(self):
+        raise NotImplementedError
 
 
 def main():
