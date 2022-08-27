@@ -1,6 +1,9 @@
 import abc
+import datetime
+from decimal import Decimal
 from functools import cached_property
 import json
+import uuid
 from jinja2 import Template
 from pydantic import BaseModel
 import inflection
@@ -125,12 +128,12 @@ def strip_query(query: str) -> str:
 
 class DBActions(BaseActions):
     __filterable_fields__ = [
-        'context', 'episode_id', 'module_name', 'module_type'
+        'context', 'episode', 'module_name', 'module_type', 'get_name'
     ]
     # module_name: str
     module_type: str
     timestep: int = -1
-    episode_id: str = None
+    episode: str | None = None
 
     @property
     def module_name(self) -> str:
@@ -163,15 +166,37 @@ class DBActions(BaseActions):
             )
         input_values = self.input_values(alter)
         input_values['timestep'] = self.gettime(timestep)
-        input_values['episode_id'] = self.episode_id
+        input_values['episode'] = self.episode
         # input_values['module_name'] = self.module_name
         input_values['module_type'] = self.module_type
 
         latest_item = self.template(file_name)
-        query = latest_item.render(module_record=input_values,
-                                   module_name=self.module_name)
+        query = latest_item.render(
+            module_record=self.get_input_str(input_values),
+            module_name=self.module_name)
         query = strip_query(query)
         return query
+
+    def get_input_str(self, input_vals: dict):
+        input_list = []
+        for key, value in input_vals.items():
+            if isinstance(value, (str, uuid.UUID)):
+                input_list = input_list + [f"{key}='{str(value)}'"]
+            elif isinstance(value, (int, float, Decimal)):
+                input_list = input_list + [f"{key}={value}"]
+            elif isinstance(value, bool):
+                input_list = input_list + [f"{key}={str(value).lower()}"]
+            elif isinstance(value, (datetime.datetime, datetime.date)):
+                input_list = input_list + [f"{key}='{value.isoformat()}'"]
+            elif isinstance(value, dict):
+                input_list = input_list + [f'{{{self.get_input_str(value)}}}']
+            elif isinstance(value, list):
+                _local_list = [self.get_input_str(item) for item in value]
+                separated = ',\n'.join(_local_list)
+                input_list = input_list + [f"[\n{separated}\n]"]
+            else:
+                input_list = input_list + [f"{key}='{str(value)}'"]
+        return ', '.join(input_list)
 
     def dict(self,
              exclude: Set[str] = set(),
@@ -199,7 +224,7 @@ class DBActions(BaseActions):
 
     def check(self) -> bool:
         """Checks that the required context variables are set."""
-        if not bool(self.episode_id) or not bool(self.module_type):
+        if not bool(self.episode) or not bool(self.module_type):
             return False
 
         return True

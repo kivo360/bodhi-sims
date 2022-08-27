@@ -25,37 +25,53 @@ from eth_utils.toolz import first  # type: ignore
 from pydantic.fields import FieldInfo
 from pydantic.fields import Undefined
 from pydantic.typing import resolve_annotations
-
+from eth_utils.decorators import combomethod
 from py_svm.core import registry
 from py_svm.synk.models import Metadata
 from py_svm.utils import dataclass_transform
-
+import orjson
 from .context import UserContext, ContextControl
 import devtools as dtoolz
-import sqlmodel.main
+# import torch.nn.modules.module
 from typing import (Any, Tuple, Union, TypeVar, Callable)
 from functools import wraps
 from types import FunctionType
 import wrapt
-
+import devtools
+# from torch.nn.modules.module
 # from importlib.resources import Resource
 
 _T = TypeVar("_T")
 
 
-@wrapt.decorator
-def pass_through(wrapped, instance, args, kwargs):
-    return wrapped(*args, **kwargs)
+def isattr(obj: object, name: str) -> bool:
+    return bool(getattr(obj, name, None))
 
 
-def wrapper(method):
+def step_wrapper(method):
 
     @wraps(method)
     def wrapped(*args, **kwargs):
-        log.warning("Something is here")
+
+        self = args[0]
+        devtools.debug(self.__modules__)
+        devtools.debug(args)
+        if self._step_pre_hooks:
+            input = self._run_pre_hooks(*args[-1:], **kwargs)
+        devtools.debug(input)
+        # devtools.debug(self._forward_hooks)
+        # devtools.debug(args[-1:])
+        # devtools.debug(kwargs)
+        devtools.debug(self.__modules__)
+
         return method(*args, **kwargs)
 
     return wrapped
+
+
+def orjson_dumps(v, *, default):
+    # orjson.dumps returns bytes, to match standard json.dumps we need to decode
+    return orjson.dumps(v, default=default).decode()
 
 
 def __dataclass_transform__(
@@ -71,7 +87,10 @@ def __dataclass_transform__(
 @__dataclass_transform__(kw_only_default=True,
                          field_descriptors=(Field, FieldInfo))
 class InitContext(ModelMetaclass):
-
+    """
+    A mixin that is to be mixed with any class that must function in a
+    contextual setting.
+    """
     module_type = None
 
     def __new__(
@@ -109,7 +128,7 @@ class InitContext(ModelMetaclass):
         }
         if 'step' in dict_used:
             if callable(dict_used['step']):
-                dict_used['step'] = wrapper(dict_used['step'])
+                dict_used['step'] = step_wrapper(dict_used['step'])
 
         new_cls = super().__new__(cls, name, bases, dict_used, **config_kwargs)
         new_cls.__annotations__ = {
@@ -133,11 +152,11 @@ class InitContext(ModelMetaclass):
 
     def __call__(cls, *args: Any, **kwds: Any) -> Any:
         instance = cls.__new__(cls, *args, **kwds)
-        if hasattr(instance, "__pre_init__"):
 
+        if isattr(instance, "__pre_init__"):
             instance.__pre_init__(*args, **kwds)  # type: ignore
         instance.__init__(*args, **kwds)
-        if hasattr(instance, "__post_init__"):
+        if isattr(instance, "__post_init__"):
             instance.__post_init__(*args, **kwds)  # type: ignore
         setattr(instance, "context", ContextControl())
 
@@ -145,10 +164,6 @@ class InitContext(ModelMetaclass):
         registry.register(instance, model_type)  # type: ignore
         # if model_type is not None:
         return instance
-
-    """A mixin that is to be mixed with any class that must function in a
-    contextual setting.
-    """
 
     @property
     def context(self) -> ContextControl:
@@ -171,18 +186,51 @@ class InitContext(ModelMetaclass):
         self._context = context
 
 
-class ModuleBase(BaseModel, metaclass=InitContext, extra=Extra.allow):
+class ModuleBase(BaseModel, metaclass=InitContext):
+    """A base class for all modules. Use to define common attributes and"""
+
     __slots__ = ("__weakref__",)
+    __modules__ = {}
+    _step_hooks: Dict[int, Callable] = collections.OrderedDict()
+    _step_pre_hooks: Dict[int, Callable] = collections.OrderedDict()
+    _forward_hooks: Dict[int, Callable] = collections.OrderedDict()
+    _forward_pre_hooks: Dict[int, Callable] = collections.OrderedDict()
+    # _state_dict_hooks: Dict[int, Callable] = collections.OrderedDict()
+    # _load_state_dict_pre_hooks: Dict[int, Callable] = collections.OrderedDict()
+    # _load_state_dict_post_hooks: Dict[int, Callable] = collections.OrderedDict()
+    # _non_persistent_buffers_set: Dict[int, Callable] = collections.OrderedDict()
+    # _is_full_backward_hook: Dict[int, Callable] = collections.OrderedDict()
+
     module_type: ClassVar[Optional[str]] = ""
 
-    def __post_init__(self, **kwds) -> None:
-        pass
-
-    def __pre_init__(self, **kwds) -> None:
-        pass
+    @combomethod
+    def get_name(combo) -> str:
+        if isinstance(combo, type):
+            # This is a classmethod, so return the class name directly.
+            return combo.__name__
+        elif isinstance(combo, ModuleBase):
+            # Get the name as an instance.
+            return combo.__class__.__name__
+        else:
+            raise TypeError("Unknown type")
 
     def __init__(self, **data) -> None:
         super().__init__(**data)
+
+    def _run_pre_hooks(self, *args, **kwds) -> Tuple[Any, ...]:
+        _input = None
+        for hook in self._step_pre_hooks.values():
+            _input = hook(self, *args, **kwds)
+        if isinstance(_input, (tuple, list, set)):
+            return tuple(_input)
+        return _input,
+
+    class Config:
+        extra: Extra = Extra.allow
+        arbitrary_types_allowed: bool = True
+        json_loads = orjson.loads
+        json_dumps = orjson_dumps
+        smart_union: bool = True
 
 
 class ResourceBase(ModuleBase):

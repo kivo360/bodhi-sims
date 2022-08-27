@@ -208,8 +208,8 @@ class HTTPEngine(AbstractEngine):
         timeout=httpx.Timeout(timeout=5.0),
         follow_redirects: bool = False,
     ) -> httpx.Response:
-        return self.session.post(
-            f"/{path.strip('/')}",
+
+        _input = dict(
             content=content,
             data=data,
             files=files,
@@ -219,6 +219,16 @@ class HTTPEngine(AbstractEngine):
             cookies=cookies,
             follow_redirects=follow_redirects,
             timeout=timeout,
+        )
+        for key, value in dict(_input).items():
+            if value is None:
+                del _input[key]
+        # print(_input)
+        # _input['json'] = _input['data']
+        # del _input['data']
+        return self.session.post(
+            f"/{path.strip('/')}",
+            **_input,
         )
 
     def __repr__(self) -> str:

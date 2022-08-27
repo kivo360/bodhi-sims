@@ -1,29 +1,18 @@
+# Standard Library
 import abc
-from typing import Any, ClassVar, Optional
-import gym
-from pydantic import Field
-from py_svm.synk.module import Module
-from py_svm.utils import get_uuid
-from loguru import logger as log
 import random
-from functools import wraps
-from types import FunctionType
-import wrapt
+from typing import Any, Tuple
+import warnings
 
+import gym
+from loguru import logger as log
 
-@wrapt.decorator
-def pass_through(wrapped, instance, args, kwargs):
-    return wrapped(*args, **kwargs)
-
-
-def wrapper(method):
-
-    @wraps(method)
-    def wrapped(*args, **kwargs):
-        log.warning("Something is here")
-        return method(*args, **kwargs)
-
-    return wrapped
+from py_svm.utils import get_uuid
+from py_svm.synk.module import Module
+from py_svm.synk.abcs.equipment import Action
+from py_svm.synk.abcs.equipment import Metrics
+from py_svm.synk.abcs.equipment import Decision
+# from torch.nn.modules.module
 
 
 class DataModule(Module):
@@ -52,7 +41,7 @@ class EnvMetaclass(abc.ABCMeta):
 
 class AgentEnv(gym.Env, Module):
     module_type: str = "env"
-    episode_id: str = ''
+    episode: str = ''
 
     def __init__(self) -> None:
         super().__init__()
@@ -69,20 +58,43 @@ class AgentEnv(gym.Env, Module):
 
     def reset(self):
         super().reset()
-        self.episode_id = get_uuid()
+        self.episode = get_uuid()
 
-    def step(self, action: Any):
+    def step(self, action: Action, *args) -> Tuple[Metrics, Decision, bool]:
         # Stop at decorating the step function to inject the timestep and episode_id into the environment
-        pass
+        return Metrics(name="metrics",
+                       metrics=[{
+                           "name": "accuracy",
+                           "value": 0.5
+                       }]), Decision(  # type: ignore
+                           name="decision",
+                           value=random.uniform(0, 1)), False
+
+    # def __getattr__(self, name):
+    #     log.critical("{} is not a valid attribute of {}".format(
+    #         name, self.__class__.__name__))
+    #     super().__getattr__(name)
+
+
+def add_episode(instance: Module, action: Action, *args, **kwds) -> Any:
+    instance.episode = str(action.episode)
+    for module in instance.modules():
+        module.episode = str(action.episode)
+    return action
 
 
 def run():
+    warnings.simplefilter("ignore")
+    # with warnings.catch_warnings():
+
     # Create a new Price module
     # Can now run a hook onto the step function.
     # Need to fix the query string. Might do processing of the query string on the python side to prevent turning string into number.
     env = AgentEnv()
+    env.register_step_prehook(add_episode)
     env.reset()
-    env.step(None)
+    env.step(Action(name="action", value=0.5, timestep=3))
+    test_set = set()
     init_price = random.uniform(300, 3003)
     price = Instrument(open=init_price * random.normalvariate(1, 0.1),
                        close=init_price,
@@ -91,12 +103,13 @@ def run():
                        volume=init_price * random.normalvariate(1, 0.1) * 10,
                        penos=init_price * random.normalvariate(1, 0.1) * 10,
                        timestep=3,
-                       symbol="AAPL",
-                       episode_id=get_uuid())
+                       symbol="AAPL")
 
-    # # price = Price(timestep=0, open=1, close=1, high=1, low=1, volume=1)
-    price.episode_id = get_uuid()
-    log.success(price.save())
+    # if price in test_set:
+    #     print("HELLO")
+    # # # price = Price(timestep=0, open=1, close=1, high=1, low=1, volume=1)
+    # price.episode = get_uuid()
+    # log.success(price.save())
     # log.error(price.latest())
     # # log.info(price.latest_by(2))
     # # log.warning(price.many(1000))
