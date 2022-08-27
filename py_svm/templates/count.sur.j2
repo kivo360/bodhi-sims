@@ -1,0 +1,5 @@
+SELECT count() from {{module_name}}
+{% if where_by is defined %}
+WHERE {{where_by.items()|map("join", "=")|join(",")}}
+{% endif %}
+GROUP BY ALL;

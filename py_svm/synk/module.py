@@ -18,7 +18,6 @@ from py_svm.synk.abcs.engine import AbstractEngine, SurrealEngine
 from py_svm.utils import dataclass_transform
 
 from .abcs.context import UserContext
-from .abcs.context import ContextualizedMixin
 
 from py_svm.synk.abcs.base import ModuleBase, ResourceBase
 from py_svm.synk.abcs.actions import DBActions
@@ -27,10 +26,10 @@ from py_svm.utils import dataclass_transform
 from pydantic.fields import Field, FieldInfo
 
 
-@dataclass_transform(kw_only_default=True, field_descriptors=(Field, FieldInfo))
 class Module(ModuleBase, DBActions):
     module_type = "module"
     timestep: int = 0
+    __modules__ = {}
 
     @property
     def resources(self) -> Dict[str, "ResourceBase"]:
@@ -53,8 +52,33 @@ class Module(ModuleBase, DBActions):
         pass
 
     def __setattr__(self, name: str, value: Any) -> None:
+
+        if isinstance(value, Module):
+            self.__modules__[name] = value
+            # return
+            # log.debug()
         returned = super().__setattr__(name, value)
+
         return returned
 
     def __getattribute__(self, __name: str) -> Any:
+        # self.__modules__
+        # modules = object.__getattribute__(self, "__modules__")
+        mods = super().__getattribute__("__modules__")
+        # log.debug(__name in mods.keys())
+        # log.debug(__name)
+        # if __name in modules:
+        #     log.error(__name)
+        # if __name in object.__getattribute__(self, "__modules__"):
+        # return self.__modules__[__name]
         return super().__getattribute__(__name)
+
+
+def main():
+
+    class ExampleModule(Module):
+        hello: str
+
+
+if __name__ == "__main__":
+    main()

@@ -67,28 +67,5 @@ class UserContext(UserDict):
         return "<{}: {}>".format(self.__class__.__name__, ", ".join(data))
 
 
-@dataclass_transform(kw_only_default=True, field_descriptors=(Field, FieldInfo))
-class ContextualizedMixin:
-    """A mixin that is to be mixed with any class that must function in a
-    contextual setting.
-    """
-
-    @property
-    def context(self) -> ContextControl:
-        """Gets the `Context` the object is under.
-        Returns
-        -------
-        `Context`
-            The context the object is under.
-        """
-        return self._context
-
-    @context.setter
-    def context(self, context: ContextControl) -> None:
-        """Sets the context for the object.
-        Parameters
-        ----------
-        context : `Context`
-            The context to set for the object.
-        """
-        self._context = context
+# @dataclass_transform(kw_only_default=True, field_descriptors=(Field, FieldInfo))
+# class ContextualizedMixin:

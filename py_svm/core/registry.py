@@ -3,7 +3,6 @@ and change the registry.
 
 """
 
-
 import weakref
 
 import stringcase
@@ -11,6 +10,7 @@ from py_svm.synk.abc import Module
 
 
 class ModuleRegistry:
+
     def __init__(self) -> None:
         self.__registry = {}
 
@@ -20,7 +20,7 @@ class ModuleRegistry:
         registry_ref = self.__registry[type_name]
         module_name = stringcase.snakecase(module.__class__.__name__)
         if module_name not in registry_ref:
-
+            # print(weakref.ref(module))
             self.__registry[type_name][module_name] = module
 
     def get_type(self, type_name: str) -> weakref.WeakValueDictionary:

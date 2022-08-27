@@ -30,11 +30,46 @@ from py_svm.core import registry
 from py_svm.synk.models import Metadata
 from py_svm.utils import dataclass_transform
 
-from .context import UserContext, ContextualizedMixin, ContextControl
+from .context import UserContext, ContextControl
 import devtools as dtoolz
+import sqlmodel.main
+from typing import (Any, Tuple, Union, TypeVar, Callable)
+from functools import wraps
+from types import FunctionType
+import wrapt
+
+# from importlib.resources import Resource
+
+_T = TypeVar("_T")
 
 
-@dataclass_transform(kw_only_default=True, field_descriptors=(Field, FieldInfo))
+@wrapt.decorator
+def pass_through(wrapped, instance, args, kwargs):
+    return wrapped(*args, **kwargs)
+
+
+def wrapper(method):
+
+    @wraps(method)
+    def wrapped(*args, **kwargs):
+        log.warning("Something is here")
+        return method(*args, **kwargs)
+
+    return wrapped
+
+
+def __dataclass_transform__(
+    *,
+    eq_default: bool = True,
+    order_default: bool = False,
+    kw_only_default: bool = False,
+    field_descriptors: Tuple[Union[type, Callable[..., Any]], ...] = (()),
+) -> Callable[[_T], _T]:
+    return lambda a: a
+
+
+@__dataclass_transform__(kw_only_default=True,
+                         field_descriptors=(Field, FieldInfo))
 class InitContext(ModelMetaclass):
 
     module_type = None
@@ -50,7 +85,7 @@ class InitContext(ModelMetaclass):
         original_annotations = resolve_annotations(
             class_dict.get("__annotations__", {}),
             class_dict.get("__module__", None))
-        pydantic_annotations = {}
+        pydantic_annotations = original_annotations
         # relationship_annotations = {}
         for k, v in class_dict.items():
             dict_for_pydantic[k] = v
@@ -72,7 +107,10 @@ class InitContext(ModelMetaclass):
             key: pydantic_kwargs.pop(key)
             for key in pydantic_kwargs.keys() & allowed_config_kwargs
         }
-        processor = dict_used.pop('processor', None)
+        if 'step' in dict_used:
+            if callable(dict_used['step']):
+                dict_used['step'] = wrapper(dict_used['step'])
+
         new_cls = super().__new__(cls, name, bases, dict_used, **config_kwargs)
         new_cls.__annotations__ = {
             **pydantic_annotations,
@@ -91,17 +129,6 @@ class InitContext(ModelMetaclass):
                 return kwarg_value
             return Undefined
 
-        # if processor is not None:
-        #     log.info(processor)
-        # dict_fields = new_cls.__dict__.get('__fields__', {})
-        # model_field = dict_fields.get('processor')
-        # model_field.default = processor
-        # log.info(model_field)
-
-        # log.debug(new_cls.__dict__)
-        # if 'processor' in new_cls.__dict__.get('__fields__', {}):
-        #     new_cls.__dict__['__fields__']['processor'].default = processor
-        # log.warning(new_cls.__dict__.get("__fields__", {}))
         return new_cls
 
     def __call__(cls, *args: Any, **kwds: Any) -> Any:
@@ -119,12 +146,33 @@ class InitContext(ModelMetaclass):
         # if model_type is not None:
         return instance
 
+    """A mixin that is to be mixed with any class that must function in a
+    contextual setting.
+    """
 
-@dataclass_transform(kw_only_default=True, field_descriptors=(Field, FieldInfo))
-class ModuleBase(BaseModel,
-                 ContextualizedMixin,
-                 metaclass=InitContext,
-                 extra=Extra.allow):
+    @property
+    def context(self) -> ContextControl:
+        """Gets the `Context` the object is under.
+        Returns
+        -------
+        `Context`
+            The context the object is under.
+        """
+        return self._context
+
+    @context.setter
+    def context(self, context: ContextControl) -> None:
+        """Sets the context for the object.
+        Parameters
+        ----------
+        context : `Context`
+            The context to set for the object.
+        """
+        self._context = context
+
+
+class ModuleBase(BaseModel, metaclass=InitContext, extra=Extra.allow):
+    __slots__ = ("__weakref__",)
     module_type: ClassVar[Optional[str]] = ""
 
     def __post_init__(self, **kwds) -> None:
