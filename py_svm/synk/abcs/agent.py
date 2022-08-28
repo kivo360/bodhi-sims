@@ -4,7 +4,7 @@ from py_svm.utils import get_uuid
 
 
 class Entity(Module):
-    module_type: ClassVar[str] = "entity"
+    module_type: str = "entity"
 
     @property
     def entity_id(self):
@@ -13,7 +13,7 @@ class Entity(Module):
 
 
 class Agent(Entity):
-    module_type: ClassVar[str] = "agent"
+    module_type: str = "agent"
 
     @property
     def agent_id(self):

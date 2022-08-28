@@ -1,46 +1,37 @@
 # from posixpath import split
 # Standard Library
-from typing import (Any, Set, Dict, Type, Tuple, Union, TypeVar, Callable,
-                    ClassVar, Iterator, Optional)
+from typing import (Any, Iterable, Set, Dict, Tuple, Callable, ClassVar,
+                    Iterator, Optional, cast)
 
 from loguru import logger as log
-from pydantic import Extra
-from pydantic import Field
-from pydantic import BaseModel
-from pydantic import BaseConfig
-from pydantic.main import ModelMetaclass
-from pydantic.fields import FieldInfo
-from pydantic.fields import Undefined
-from pydantic.typing import resolve_annotations
+import pyrsistent
+import stringcase
 
 from py_svm.core import registry
-from py_svm.synk.abcs.engine import AbstractEngine, SurrealEngine
-from py_svm.utils import dataclass_transform, get_uuid
-
-from .abcs.context import UserContext
-
-from py_svm.synk.abcs.base import ModuleBase, ResourceBase, isattr
+from py_svm.utils import get_uuid
+from py_svm.synk.abcs.base import isattr
+from py_svm.synk.abcs.base import ModuleBase
+from py_svm.synk.abcs.base import ResourceBase
 from py_svm.synk.abcs.actions import DBActions
-
-from py_svm.utils import dataclass_transform
-from pydantic.fields import Field, FieldInfo
-import pyrsistent
+from py_svm.synk.abcs.resource import Clock
 
 
 class Module(ModuleBase, DBActions):
 
-    module_type = "module"
     timestep: int = 0
 
     @property
-    def resources(self) -> Dict[str, "ResourceBase"]:
+    def resources(self) -> Iterable["ResourceBase"]:
         """
         > This function returns a weakref value dictionary of all the resources in the project
         :return: A dictionary of all the resources in the project.
         """
         return list(self.modules_by_type("resource"))  # type: ignore
 
-    def get_resource(self, name) -> Optional['ResourceBase']:
+    def clock(self) -> Clock:
+        return cast(Clock, self.resource("clock"))
+
+    def resource(self, name) -> Optional['ResourceBase']:
         """Get a single resource from the simulation."""
         return registry.get_module("resource", name)  # type: ignore
 
@@ -50,16 +41,13 @@ class Module(ModuleBase, DBActions):
 
     def default(self, name: str, default_object: Any | None = None):
         """Get the default setting from a configuration object. Creates a config object ig it doesn't exist yet."""
-        pass
 
     def __setattr__(self, name: str, value: Any) -> None:
 
         if isinstance(value, Module):
-            log.opt(depth=4).debug(value)
             self.add_module(name, value)
             return
-            # return
-            # log.debug()
+
         returned = super().__setattr__(name, value)
 
         return returned
@@ -167,14 +155,25 @@ class Module(ModuleBase, DBActions):
                                               remove_duplicate):
                     yield m
 
+    def truename(self, hook: Callable):
+        # snake_class = stringcase.snakecase(self.__class__.__name__)
+        hook_class = stringcase.snakecase(hook.__name__)
+        return f"{hook_class}"
+
     def register_step_prehook(self, hook: Callable) -> None:
         """
         Register a hook to be called when this module is used in a forward pass.
         """
-        self._step_pre_hooks[get_uuid()] = hook
+        self._step_pre_hooks[self.truename(hook)] = hook
+
+    def register_step_hook(self, hook: Callable) -> None:
+        """
+        Register a hook to be called when this module is used in a forward pass.
+        """
+        self._step_hooks[self.truename(hook)] = hook
 
     def __hash__(self) -> int:
-        hashed = hash(pyrsistent.CheckedPMap(self.dict()))
+        hashed = hash(pyrsistent.freeze(self.dict()))
         return hashed
 
 

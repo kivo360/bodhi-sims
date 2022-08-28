@@ -4,7 +4,7 @@ from py_svm.utils import get_uuid
 
 
 class Behavior(Module):
-    module_type: ClassVar[str] = "behavior"
+    module_type: str = "behavior"
 
     @property
     def behavior_id(self):

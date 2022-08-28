@@ -2,8 +2,6 @@
 # from posixpath import split
 from typing import (Any, Tuple, Union, TypeVar, Callable)
 
-# from importlib.resources import Resource
-
 _T = TypeVar("_T")
 
 

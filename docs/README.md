@@ -235,6 +235,9 @@ These actions will allow me to do everything else regarding module and agent-bas
 13. Hang around a University for 4 days a week towards the end of the development.
 
 
+
+
+
 The big challenge is with coming up with a way forward.
 
 ### How to reach goals
@@ -331,6 +334,8 @@ class Bank(Entity):
         return self.forward(payload)
 
 ```
+
+
 
 ### Pre-built Queries (Based on Requirements)
 

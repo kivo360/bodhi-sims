@@ -1,5 +1,5 @@
 {
   "editor.tabCompletion": "on",
   "diffEditor.codeLens": true,
-  "conventionalCommits.scopes": ["query\\"]
+  "conventionalCommits.scopes": ["query\\", "step"]
 }

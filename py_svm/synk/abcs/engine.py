@@ -13,6 +13,27 @@ import orjson
 from py_svm.typings import DictAny
 
 
+class BaseResponse(BaseModel, abc.ABC):
+
+    def success(self) -> bool:
+        raise NotImplementedError("success is not implemented")
+
+    def empty(self) -> bool:
+        raise NotImplementedError("empty is not implemented")
+
+    def reasons(self) -> dict:
+        raise NotImplementedError("details is not implemented")
+
+    def results(self) -> List[Any]:
+        raise NotImplementedError("results is not implemented")
+
+    def first(self) -> dict:
+        raise NotImplementedError("first is not implemented")
+
+    def last(self):
+        raise NotImplementedError("last is not implemented")
+
+
 class AbstractEngine(abc.ABC):
     """This is where the database is supposed to interact with the client."""
 
@@ -31,7 +52,9 @@ class AbstractEngine(abc.ABC):
         """Disconnects from the database."""
         raise NotImplementedError
 
-    def execute(self, query: str, params: Optional[dict] = None) -> dict:
+    def execute(self,
+                query: str,
+                params: Optional[dict] = None) -> BaseResponse:
         return {}
 
     def query(self, query: str, params: Optional[dict] = None) -> dict:
@@ -252,10 +275,23 @@ class SurrealHeaders(HeadersBuilder):
 """
 
 
-class ErrorResponse(BaseModel):
+class ErrorResponse(BaseResponse):
     code: int
     details: str
     description: str
+
+    def empty(self) -> bool:
+        return True
+
+    def success(self) -> bool:
+        return False
+
+    def reasons(self) -> dict:
+        return {
+            "code": self.code,
+            "details": self.details,
+            "description": self.description
+        }
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(status_code={self.status_code}, headers={self.headers}, body={self.body})"  # type: ignore
@@ -265,6 +301,18 @@ class SuccessResposne(BaseModel):
     time: str
     status: str
     result: List[DictAny]
+
+    def empty(self) -> bool:
+        return not self.result
+
+    def success(self) -> bool:
+        return True
+
+    def results(self) -> List[DictAny]:
+        return self.result
+
+    def first(self) -> DictAny:
+        return self.result[0]
 
 
 class Response:

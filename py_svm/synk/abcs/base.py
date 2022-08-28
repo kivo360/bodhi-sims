@@ -39,7 +39,6 @@ from types import FunctionType
 import wrapt
 import devtools
 # from torch.nn.modules.module
-# from importlib.resources import Resource
 
 _T = TypeVar("_T")
 
@@ -54,17 +53,13 @@ def step_wrapper(method):
     def wrapped(*args, **kwargs):
 
         self = args[0]
-        devtools.debug(self.__modules__)
-        devtools.debug(args)
+        input: Tuple[Any, ...] | None = None
         if self._step_pre_hooks:
-            input = self._run_pre_hooks(*args[-1:], **kwargs)
-        devtools.debug(input)
-        # devtools.debug(self._forward_hooks)
-        # devtools.debug(args[-1:])
-        # devtools.debug(kwargs)
-        devtools.debug(self.__modules__)
+            input = cast(tuple, self._run_pre_hooks(*args[-1:], **kwargs))
+        if not input:
+            input = args[1:]
 
-        return method(*args, **kwargs)
+        return method(self, *input, **kwargs)
 
     return wrapped
 
@@ -161,6 +156,7 @@ class InitContext(ModelMetaclass):
         setattr(instance, "context", ContextControl())
 
         model_type = instance.module_type
+
         registry.register(instance, model_type)  # type: ignore
         # if model_type is not None:
         return instance
@@ -191,10 +187,10 @@ class ModuleBase(BaseModel, metaclass=InitContext):
 
     __slots__ = ("__weakref__",)
     __modules__ = {}
-    _step_hooks: Dict[int, Callable] = collections.OrderedDict()
-    _step_pre_hooks: Dict[int, Callable] = collections.OrderedDict()
-    _forward_hooks: Dict[int, Callable] = collections.OrderedDict()
-    _forward_pre_hooks: Dict[int, Callable] = collections.OrderedDict()
+    _step_hooks: Dict[str, Callable] = collections.OrderedDict()
+    _step_pre_hooks: Dict[str, Callable] = collections.OrderedDict()
+    _forward_hooks: Dict[str, Callable] = collections.OrderedDict()
+    _forward_pre_hooks: Dict[str, Callable] = collections.OrderedDict()
     # _state_dict_hooks: Dict[int, Callable] = collections.OrderedDict()
     # _load_state_dict_pre_hooks: Dict[int, Callable] = collections.OrderedDict()
     # _load_state_dict_post_hooks: Dict[int, Callable] = collections.OrderedDict()
@@ -234,4 +230,4 @@ class ModuleBase(BaseModel, metaclass=InitContext):
 
 
 class ResourceBase(ModuleBase):
-    module_type: ClassVar[str] = "resource"
+    module_type: str = "resource"

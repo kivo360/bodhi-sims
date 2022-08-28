@@ -9,8 +9,6 @@ from typing import (Any, Tuple, Union, TypeVar, Callable, Iterator,
 from loguru import logger as log
 import pyarrow as pa
 
-# from importlib.resources import Resource
-
 
 class DatabaseAPI(MutableMapping[bytes, bytes], ABC):
     """

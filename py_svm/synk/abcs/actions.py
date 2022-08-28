@@ -1,24 +1,27 @@
+# Standard Library
 import abc
-import datetime
-from decimal import Decimal
-from functools import cached_property
-import json
 import uuid
+from typing import Any, ClassVar, Dict, List, Set
+from decimal import Decimal
+import datetime
+
 from jinja2 import Template
-from pydantic import BaseModel
-import inflection
-from typing import Dict, List, Optional, ClassVar, Any, Set
-from py_svm.synk.abcs.engine import AbstractEngine, SurrealEngine
-import torch
-import devtools as dvz
+from jinja2 import Environment
+from jinja2 import PackageLoader
 from loguru import logger as log
-from jinja2 import Environment, PackageLoader
+from pydantic import BaseModel, Field
+import inflection
+from py_svm.utils import isattr
 
 from py_svm.typings import DictAny
+from py_svm.synk.abcs.engine import SurrealEngine
+from py_svm.synk.abcs.engine import AbstractEngine
 
 jinja_env = Environment(loader=PackageLoader("py_svm", "templates"),
                         trim_blocks=True,
                         lstrip_blocks=True)
+
+ACTIVE_ENGINE: AbstractEngine = None
 
 
 class BaseActions(BaseModel, abc.ABC):
@@ -95,7 +98,6 @@ class BaseActions(BaseModel, abc.ABC):
         :param query: a dictionary of the query to be used
         :type query: dict
         """
-        pass
 
     @abc.abstractmethod
     def save_many(self, data: List[Dict[str, Any]]):
@@ -131,8 +133,8 @@ class DBActions(BaseActions):
         'context', 'episode', 'module_name', 'module_type', 'get_name'
     ]
     # module_name: str
-    module_type: str
-    timestep: int = -1
+    module_type: str = 'db'
+    timestep: int = 0
     episode: str | None = None
 
     @property
@@ -142,7 +144,7 @@ class DBActions(BaseActions):
     def gettime(self, timestep: int = -1):
         if timestep >= 0:
             self.timestep = timestep
-        return timestep
+        return self.timestep
 
     def template(self, template_name: str) -> Template:
         template_query = jinja_env.get_template(template_name)
@@ -177,7 +179,7 @@ class DBActions(BaseActions):
         query = strip_query(query)
         return query
 
-    def get_input_str(self, input_vals: dict):
+    def get_input_str(self, input_vals: dict, join_key: str = ', ') -> str:
         input_list = []
         for key, value in input_vals.items():
             if isinstance(value, (str, uuid.UUID)):
@@ -193,10 +195,10 @@ class DBActions(BaseActions):
             elif isinstance(value, list):
                 _local_list = [self.get_input_str(item) for item in value]
                 separated = ',\n'.join(_local_list)
-                input_list = input_list + [f"[\n{separated}\n]"]
+                input_list = input_list + [f"[{separated}]"]
             else:
                 input_list = input_list + [f"{key}='{str(value)}'"]
-        return ', '.join(input_list)
+        return join_key.join(input_list)
 
     def dict(self,
              exclude: Set[str] = set(),
@@ -216,7 +218,11 @@ class DBActions(BaseActions):
 
     @property
     def engine(self) -> AbstractEngine:
-        return SurrealEngine('http://localhost:8000', 'root', 'root')
+        global ACTIVE_ENGINE
+        if not ACTIVE_ENGINE:
+            ACTIVE_ENGINE = SurrealEngine('http://localhost:8000', 'root',
+                                          'root')
+        return ACTIVE_ENGINE
 
     def between(self, start: int, end: int, query: DictAny = {}):
         # Get the time between the start and end timesteps.
@@ -253,8 +259,10 @@ class DBActions(BaseActions):
         input_values.update(alter)
         # Would create the query here.
         latest_item = jinja_env.get_template('latest.sur.j2')
-        module_type = input_values.pop('module_type')
-        query = latest_item.render(module_name=module_type)
+
+        module_type = self.module_type
+
+        query = latest_item.render(module_name=self.module_name)
         query = query.replace("\n", " ").strip().strip(',')
 
         res = self.engine.execute(query)
@@ -297,14 +305,23 @@ class DBActions(BaseActions):
 
     def count(self, alter: Dict[str, Any] = {}) -> int:
         """Gets the total number of records given a query."""
-        input_values = self.input_values(alter)
+        # input_values = self.input_values(alter)
+        input_values = {
+            'episode': self.episode,
+            'module_type': self.module_type
+        }
         template = self.template('count.sur.j2')
-        module_name = input_values.pop('module_type')
+        module_name = self.module_name
         query_str = strip_query(
-            template.render(module_name=module_name, timestep=3))
+            template.render(module_name=module_name,
+                            timestep=self.gettime(self.timestep),
+                            where_by=self.get_input_str(input_values, ' and ')))
         res = self.engine.execute(query_str)
-        if hasattr(res, "result"):
-            return res.result[0]['count']  # type: ignore
+        if res.success():
+            # print(res)
+            if not res.empty():
+                return res.first().get('count', 0)  # type: ignore
+
         return 0
 
     def find(self, alter: Dict[str, Any] = {}) -> bool:
@@ -352,6 +369,7 @@ class DBActions(BaseActions):
 
 
 def main():
+    # Standard Library
     import uuid
     print(str(uuid.uuid4()))
 

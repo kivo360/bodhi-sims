@@ -252,7 +252,7 @@ class Module(BaseModel,
              ContextualizedMixin,
              metaclass=InitContext,
              extra=Extra.allow):
-    module_type: ClassVar[Optional[str]] = ""
+    module_type: Optional[str] = ""
 
     def __post_init__(self) -> None:
         pass
@@ -276,20 +276,19 @@ class Module(BaseModel,
         return returned
 
     def log_change(self, name: str, value: Any) -> None:
-        # log.debug(f"Setting '{name}' to '{value}'")
         pass
 
 
 class Resource(Module):
-    module_type: ClassVar[str] = "resource"
+    module_type: str = "resource"
 
 
 class Behavior(Module):
-    module_type: ClassVar[str] = "behavior"
+    module_type: str = "behavior"
 
 
 class Entity(Module):
-    module_type: ClassVar[str] = "entity"
+    module_type: str = "entity"
 
 
 class Agent(Module):

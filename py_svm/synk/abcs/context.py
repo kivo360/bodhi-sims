@@ -15,13 +15,25 @@ from pydantic.fields import FieldInfo  # type: ignore
 from py_svm.synk.models import Metadata
 import devtools as dtoolz
 from py_svm.utils import dataclass_transform
+import pyrsistent
 
 
 class ContextControl:
 
     def __init__(self):
-        self._ctx_vars: Dict[str, Any] = {}
+        self.reset()
+
+    def reset(self):
+        self._ctx_vars = {}
         self.cxt = Context()
+
+    def __getstate__(self):
+        return pyrsistent.freeze(self.flattened())
+
+    def __setstate__(self, state: dict):
+        self.reset()
+        for key, value in state.items():
+            self.set(key, value)
 
     def copy(self) -> Context:
         return copy_context()

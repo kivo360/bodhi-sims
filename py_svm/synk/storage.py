@@ -234,7 +234,6 @@ class ContextManager:
     def delete(self, key):
         if key in self._ctx_vars:
             self._ctx_vars[key].reset()
-        # ContextVar(key).reset(key)
 
     def as_model(self):
         return Metadata(**self.flattened())

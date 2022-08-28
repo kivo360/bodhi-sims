@@ -7,6 +7,7 @@ import weakref
 
 import stringcase
 from py_svm.synk.abc import Module
+from py_svm.utils import isattr
 
 
 class ModuleRegistry:
@@ -24,6 +25,9 @@ class ModuleRegistry:
             self.__registry[type_name][module_name] = module
 
     def get_type(self, type_name: str) -> weakref.WeakValueDictionary:
+        if type_name in self.__registry:
+            return self.__registry[type_name]
+        self.__registry[type_name] = weakref.WeakValueDictionary()
         return self.__registry[type_name]
 
     def get_module(self, type_name: str, module_name: str) -> "Module":
