@@ -183,9 +183,9 @@ def run():
         env_cache['env_test'] = get_uuid()
     random_episode = str(env_cache['env_test'])
     # Forced to place resources in the main scope to avoid losing the reference.
-    resources = run_clock(random_episode)
+    run_clock(random_episode)
 
-    env = activate_env()
+    activate_env()
     # dbs = db_calls()
     # env = AgentEnv()
     # env.register_step_prehook(add_episode)

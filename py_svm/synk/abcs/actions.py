@@ -162,6 +162,7 @@ class DBActions(BaseActions):
                   file_name: str,
                   alter: Dict[str, Any] = {},
                   timestep: int = -1) -> str:
+        # I so want to make this faster. Rust all day and night baby!
         if not self.check():
             raise ValueError(
                 "Context is not set: timestep, episode_id, module_name, module_type"

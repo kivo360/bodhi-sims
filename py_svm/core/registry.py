@@ -14,15 +14,39 @@ class ModuleRegistry:
 
     def __init__(self) -> None:
         self.__registry = {}
+        self.__module_holder = {}
 
-    def register(self, module: "Module", type_name: str) -> None:
+    def create_registry_if_not_exists(self, type_name: str) -> None:
         if type_name not in self.__registry:
             self.__registry[type_name] = weakref.WeakValueDictionary()
-        registry_ref = self.__registry[type_name]
+
+    def create_holder_if_not_exists(self, type_name: str) -> None:
+        if type_name not in self.__module_holder:
+            self.__module_holder[type_name] = dict()
+
+    def add_holder(self, type_name: str, module_name: str,
+                   module: "Module") -> None:
+        self.create_holder_if_not_exists(type_name)
+        self.__module_holder[type_name][module_name] = module
+
+    def add_reference(self, type_name: str, module_name: str,
+                      module: "Module") -> None:
+        self.register(module, type_name)
+        self.add_holder(type_name, module_name, module)
+
+    def get_holder(self, type_name: str, module_name: str) -> dict:
+        self.create_holder_if_not_exists(type_name)
+        return self.__module_holder[type_name].get(module_name, None)
+
+    def register(self, module: "Module", type_name: str) -> None:
+        self.create_registry_if_not_exists(type_name)
         module_name = stringcase.snakecase(module.__class__.__name__)
+        self.add_holder(type_name, module_name, module)
+        registry_ref = self.__registry[type_name]
         if module_name not in registry_ref:
             # print(weakref.ref(module))
-            self.__registry[type_name][module_name] = module
+            self.__registry[type_name][module_name] = self.get_holder(
+                type_name, module_name)
 
     def get_type(self, type_name: str) -> weakref.WeakValueDictionary:
         if type_name in self.__registry:
