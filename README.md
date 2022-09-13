@@ -25,3 +25,8 @@ A small simulation framework. It uses duckdb to store the state of the simulatio
 
 - https://github.com/numary/machine
 
+
+## Possible Name Updates
+
+- `Katywn` - this is the Arabic translation for the `Ceration` Alchemical process. The process is tied to the Sagittarius astrological sign, my birthday. 
+- ...

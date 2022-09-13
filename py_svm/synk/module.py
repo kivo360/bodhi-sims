@@ -28,6 +28,7 @@ class Module(ModuleBase, DBActions):
         """
         return list(self.modules_by_type("resource"))  # type: ignore
 
+    @property
     def clock(self) -> Clock:
         return cast(Clock, self.resource("clock"))
 

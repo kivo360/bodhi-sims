@@ -510,6 +510,7 @@ async def main():
     TEST_MODULE_ID = str(uuid.uuid4())
     experiment = Experiment()
     for _ in range(10):
+        log.info(f"Count: {_}")
         with experiment as expr:
 
             table.insert(

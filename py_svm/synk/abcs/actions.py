@@ -14,7 +14,7 @@ import inflection
 from py_svm.utils import isattr
 
 from py_svm.typings import DictAny
-from py_svm.synk.abcs.engine import SurrealEngine
+from py_svm.synk.abcs.engine import BaseResponse, SurrealEngine
 from py_svm.synk.abcs.engine import AbstractEngine
 
 jinja_env = Environment(loader=PackageLoader("py_svm", "templates"),
@@ -236,44 +236,36 @@ class DBActions(BaseActions):
 
         return True
 
-    def save(self, alter: DictAny = {}):
+    def save(self, alter: DictAny = {}) -> BaseResponse:
         """Upserts data along side context"""
 
-        query = self.get_query('save.sur.j2', alter=alter)
-        log.info(query)
-        # input_values = self.dict(exclude=set(self.__filterable_fields__))
-        # input_values.update(alter)
-        # # Would create the query here.
-        # create_query = jinja_env.get_template('save.sur.j2')
-        # module_type = input_values.pop('module_type')
-        # query = create_query.render(module_name=module_type,
-        #                             module_record=input_values)
-        # query = query.replace("\n", " ").strip().strip(',')
-        # # query = f"{query};"
-        info = self.engine.execute(query)
+        query: str = self.get_query('save.sur.j2', alter=alter)
+        # log.info(query)
+        info: 'BaseResponse' = self.engine.execute(query)
         return info
-        # print(info[0])
-        # print(self.__filterable_fields__)
 
     def latest(self, alter: DictAny = {}):
         input_values = self.dict(exclude=set(self.__filterable_fields__))
         input_values.update(alter)
         # Would create the query here.
-        latest_item = jinja_env.get_template('latest.sur.j2')
+        latest_item: Template = jinja_env.get_template('latest.sur.j2')
 
-        module_type = self.module_type
-
-        query = latest_item.render(module_name=self.module_name)
-        query = query.replace("\n", " ").strip().strip(',')
-
-        res = self.engine.execute(query)
+        module_type: str = self.module_type
+        # log.warning(module_type)
+        query: str = latest_item.render(module_name=self.module_name)
+        query: str = query.replace("\n", " ").strip().strip(',')
+        res: 'BaseResponse' = self.engine.execute(query)
         return res
 
-    def latest_by(self, timestep: int = -1, alter: DictAny = {}):
-        input_values = self.input_values(alter)
-        latest_item = self.template('latest_by.sur.j2')
-        query = latest_item.render(module_name=self.module_type,
-                                   timestep=self.gettime(timestep))
+    def latest_by(self,
+                  timestep: int = -1,
+                  alter: DictAny = {}) -> 'BaseResponse':
+        input_values: Dict[str, Any] = self.input_values(alter)
+        # Can possibly add a group_by here. The groupby would be a list of fields (in string form) to group by.
+        # Run a few practice queries in the database to see how this works.
+        latest_item: Template = self.template('latest_by.sur.j2')
+        query: str = latest_item.render(module_name=self.module_type,
+                                        timestep=self.gettime(timestep))
         query = strip_query(query)
         res = self.engine.execute(query)
 
@@ -360,10 +352,6 @@ class DBActions(BaseActions):
             template.render(module_name=module_name, timestep=3))
         res = self.engine.execute(query_str)
         return False
-
-    def reset(self):
-        """Load the Module State from the database if it exist"""
-        raise NotImplementedError
 
     def refresh(self):
         raise NotImplementedError

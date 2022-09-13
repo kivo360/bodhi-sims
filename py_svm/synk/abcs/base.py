@@ -1,23 +1,16 @@
 # Standard Library
-import abc
-import uuid
-from typing import (Any, Set, cast, Dict, List, Type, Tuple, Union, TypeVar,
-                    Callable, ClassVar, Iterator, Optional, MutableMapping)
-from pathlib import Path
-from itertools import count
+# import torch.nn.modules.module
+from typing import (Any, Set, cast, Dict, Type, Tuple, Union, TypeVar, Callable,
+                    ClassVar, Optional)
+from functools import wraps
 # from py_svm.synk.abc import DatabaseAPI
 import collections
-from contextvars import Context
-from contextvars import ContextVar
-from contextvars import copy_context
 
-import anyio
-from loguru import logger as log
+import orjson
 from pydantic import Extra
 from pydantic import Field
 from pydantic import BaseModel
 from pydantic import BaseConfig
-from diskcache import Cache
 from eth_utils import ValidationError  # type: ignore
 from pydantic.main import ModelMetaclass
 from eth_utils.toolz import nth  # type: ignore
@@ -26,18 +19,11 @@ from pydantic.fields import FieldInfo
 from pydantic.fields import Undefined
 from pydantic.typing import resolve_annotations
 from eth_utils.decorators import combomethod
+
 from py_svm.core import registry
-from py_svm.synk.models import Metadata
-from py_svm.utils import dataclass_transform
-import orjson
-from .context import UserContext, ContextControl
-import devtools as dtoolz
-# import torch.nn.modules.module
-from typing import (Any, Tuple, Union, TypeVar, Callable)
-from functools import wraps
-from types import FunctionType
-import wrapt
-import devtools
+
+from .context import ContextControl
+
 # from torch.nn.modules.module
 
 _T = TypeVar("_T")
@@ -54,12 +40,14 @@ def step_wrapper(method):
 
         self = args[0]
         input: Tuple[Any, ...] | None = None
+        stripped_args = args[1:]
         if self._step_pre_hooks:
-            input = cast(tuple, self._run_pre_hooks(*args[-1:], **kwargs))
+            input = cast(tuple, self._run_pre_hooks(*stripped_args, **kwargs))
         if not input:
-            input = args[1:]
-
-        return method(self, *input, **kwargs)
+            input = stripped_args
+        result = method(self, *input, **kwargs)
+        result = self._run_hooks(result, *input, **kwargs)
+        return result
 
     return wrapped
 
@@ -221,6 +209,12 @@ class ModuleBase(BaseModel, metaclass=InitContext):
             return tuple(_input)
         return _input,
 
+    def _run_hooks(self, result, *args, **kwds) -> Tuple[Any, ...]:
+        for hook in self._step_hooks.values():
+            result = hook(self, result, *args, **kwds)
+
+        return result
+
     class Config:
         extra: Extra = Extra.allow
         arbitrary_types_allowed: bool = True
@@ -231,3 +225,11 @@ class ModuleBase(BaseModel, metaclass=InitContext):
 
 class ResourceBase(ModuleBase):
     module_type: str = "resource"
+
+    def reset(self):
+        # Load resouirce state given available selection data
+        pass
+
+    def refresh(self):
+        """Refreshes the resource state. Use function call automatically using callback. Different from `reset` function."""
+        pass

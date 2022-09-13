@@ -60,3 +60,7 @@ class Forward(Equipment, abc.ABC):
 
     def vector(self) -> pa.Tensor:
         raise NotImplementedError
+
+
+class State(Equipment, abc.ABC):
+    value: Any
