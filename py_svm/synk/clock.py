@@ -1,8 +1,6 @@
 from __future__ import annotations
 from datetime import datetime
 
-# mypy
-
 
 class Clock(object):
     """A class to track the time for a process.
@@ -40,7 +38,8 @@ class Clock(object):
         datetime
             The current time.
         """
-        return datetime.now().strftime(format) if format else datetime.now()
+        return datetime.now().strftime(
+            format) if format else datetime.now()  # type: ignore
 
     def increment(self) -> None:
         """Increments the clock by specified time increment."""

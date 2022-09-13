@@ -15,13 +15,25 @@ from pydantic.fields import FieldInfo  # type: ignore
 from py_svm.synk.models import Metadata
 import devtools as dtoolz
 from py_svm.utils import dataclass_transform
+import pyrsistent
 
 
 class ContextControl:
 
     def __init__(self):
-        self._ctx_vars: Dict[str, Any] = {}
+        self.reset()
+
+    def reset(self):
+        self._ctx_vars = {}
         self.cxt = Context()
+
+    def __getstate__(self):
+        return pyrsistent.freeze(self.flattened())
+
+    def __setstate__(self, state: dict):
+        self.reset()
+        for key, value in state.items():
+            self.set(key, value)
 
     def copy(self) -> Context:
         return copy_context()
@@ -67,28 +79,5 @@ class UserContext(UserDict):
         return "<{}: {}>".format(self.__class__.__name__, ", ".join(data))
 
 
-@dataclass_transform(kw_only_default=True, field_descriptors=(Field, FieldInfo))
-class ContextualizedMixin:
-    """A mixin that is to be mixed with any class that must function in a
-    contextual setting.
-    """
-
-    @property
-    def context(self) -> ContextControl:
-        """Gets the `Context` the object is under.
-        Returns
-        -------
-        `Context`
-            The context the object is under.
-        """
-        return self._context
-
-    @context.setter
-    def context(self, context: ContextControl) -> None:
-        """Sets the context for the object.
-        Parameters
-        ----------
-        context : `Context`
-            The context to set for the object.
-        """
-        self._context = context
+# @dataclass_transform(kw_only_default=True, field_descriptors=(Field, FieldInfo))
+# class ContextualizedMixin:

@@ -234,7 +234,6 @@ class ContextManager:
     def delete(self, key):
         if key in self._ctx_vars:
             self._ctx_vars[key].reset()
-        # ContextVar(key).reset(key)
 
     def as_model(self):
         return Metadata(**self.flattened())
@@ -511,6 +510,7 @@ async def main():
     TEST_MODULE_ID = str(uuid.uuid4())
     experiment = Experiment()
     for _ in range(10):
+        log.info(f"Count: {_}")
         with experiment as expr:
 
             table.insert(

@@ -18,7 +18,7 @@ Use metaprogramming to make scalable environments while having imperative progra
 
 ### Problem 
 
-When creating an OpenAI gym or Mesa application clashes with the scalable methods of ECS systems. The best way to do this is to 
+When creating an OpenAI gym or Mesa application clashes with the scalable methods of ECS systems. The best way to do this is to ... forgot what I put here.
 
 The `Env` is usually declared as a `world` object. Logic to push the environment forward is usually done using the `step` function. On that step, a scheduler runs through and executes the step command on each agent. The scheduler returns each agent, the state is updated each agent's step function. Hash.ai, a well-designed agent-based modeling system (I'll likely use at some point), has states and behaviors defined separately from each other. This is a decoupled approach that allows for scalable environments. There's an issue with this approach. **Cohesion and strategic coupling is missing, dynamically controlling behavior on agents and environments are not supported, and tight integration with python's many libraries is not immediately available without jumping through extra steps**. 
 
@@ -235,6 +235,9 @@ These actions will allow me to do everything else regarding module and agent-bas
 13. Hang around a University for 4 days a week towards the end of the development.
 
 
+
+
+
 The big challenge is with coming up with a way forward.
 
 ### How to reach goals
@@ -331,6 +334,8 @@ class Bank(Entity):
         return self.forward(payload)
 
 ```
+
+
 
 ### Pre-built Queries (Based on Requirements)
 
@@ -482,7 +487,7 @@ Actually, here's a set of question:
    1. Is there some kind set of rules I need to apply to modules? (similar to PyTorch)
 3. Would I select historical records by using some ORM-like selection from within the module?
 4. The answer to the first question is yes, but not always.
-5. 
+
 
 Thank the sweet lord almighty. I happened to look at one of three remaining sources and believe I figured out how to structure the code. While I'll still take inspiration from my predecessors. The style is straightforward and borrowed from [PieCash](https://github.com/sdementen/piecash/blob/ec30cf469198cccf35f7ba968f889d360cfe1824/piecash/core/account.py#L169). They do a really good job of using python features to clean it up.
 
@@ -614,15 +619,14 @@ class Portfolio(Module):
         self.ledger.reset()
         for wallet in self._wallets.values():
             wallet.reset()
-
-
-
-
-
 ```
+
+
+
+
 ## Graph Network
 
-To manage in depth graph connections I figure there will be a combination of techniques. One part would be the use of operators and objects. It would look like the following:
+To manage in depth graph connections I figure there will be a combination of techniques. One part would be the use of operators and objects. How to . It would look like the following:
 
 ```py
 from svm.framework import graph as gl

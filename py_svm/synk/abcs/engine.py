@@ -1,7 +1,7 @@
 # Standard Library
 import abc
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import httpx
 from loguru import logger as log
@@ -9,6 +9,29 @@ from pydantic import BaseModel
 import inspect
 import devtools
 import orjson
+
+from py_svm.typings import DictAny
+
+
+class BaseResponse(BaseModel, abc.ABC):
+
+    def success(self) -> bool:
+        raise NotImplementedError("success is not implemented")
+
+    def empty(self) -> bool:
+        raise NotImplementedError("empty is not implemented")
+
+    def reasons(self) -> dict:
+        raise NotImplementedError("details is not implemented")
+
+    def results(self) -> List[Any]:
+        raise NotImplementedError("results is not implemented")
+
+    def first(self) -> dict:
+        raise NotImplementedError("first is not implemented")
+
+    def last(self):
+        raise NotImplementedError("last is not implemented")
 
 
 class AbstractEngine(abc.ABC):
@@ -29,7 +52,9 @@ class AbstractEngine(abc.ABC):
         """Disconnects from the database."""
         raise NotImplementedError
 
-    def execute(self, query: str, params: Optional[dict] = None) -> dict:
+    def execute(self,
+                query: str,
+                params: Optional[dict] = None) -> BaseResponse:
         return {}
 
     def query(self, query: str, params: Optional[dict] = None) -> dict:
@@ -99,6 +124,16 @@ class HTTPEngine(AbstractEngine):
             self.auth = self.provider.basic(self.username, self.password)
         self.headers_builder = default_headers
         self._session: httpx.Client | None = None
+        self.reset()
+
+    def __getstate__(self):
+        state = self.__dict__
+        state['_session'] = None
+        # state['session'] = None
+        return state
+
+    def __setstate__(self, state: DictAny = {}):
+        self.__dict__.update(state)
         self.reset()
 
     def __enter__(self):
@@ -196,8 +231,8 @@ class HTTPEngine(AbstractEngine):
         timeout=httpx.Timeout(timeout=5.0),
         follow_redirects: bool = False,
     ) -> httpx.Response:
-        return self.session.post(
-            f"/{path.strip('/')}",
+
+        _input = dict(
             content=content,
             data=data,
             files=files,
@@ -207,6 +242,16 @@ class HTTPEngine(AbstractEngine):
             cookies=cookies,
             follow_redirects=follow_redirects,
             timeout=timeout,
+        )
+        for key, value in dict(_input).items():
+            if value is None:
+                del _input[key]
+        # print(_input)
+        # _input['json'] = _input['data']
+        # del _input['data']
+        return self.session.post(
+            f"/{path.strip('/')}",
+            **_input,
         )
 
     def __repr__(self) -> str:
@@ -225,6 +270,55 @@ class SurrealHeaders(HeadersBuilder):
         }
 
 
+"""
+{'code': 400, 'details': 'Request problems detected', 'description': 'There is a problem with your request. Refer to the documentation for further information.', 'information': "There was a problem with the database: Parse error on line 1 at character 29 when parsing ', zzzz volume = 23541.051837011226, zzzz high = 2724.9717250006825, zzzz open = 2604.0900286133933, '"}
+"""
+
+
+class ErrorResponse(BaseResponse):
+    code: int
+    details: str
+    description: str
+
+    def empty(self) -> bool:
+        return True
+
+    def success(self) -> bool:
+        return False
+
+    def reasons(self) -> dict:
+        return {
+            "code": self.code,
+            "details": self.details,
+            "description": self.description
+        }
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(status_code={self.status_code}, headers={self.headers}, body={self.body})"  # type: ignore
+
+
+class SuccessResposne(BaseModel):
+    time: str
+    status: str
+    result: List[DictAny]
+
+    def empty(self) -> bool:
+        return not self.result
+
+    def success(self) -> bool:
+        return True
+
+    def results(self) -> List[DictAny]:
+        return self.result
+
+    def first(self) -> DictAny:
+        return self.result[0]
+
+
+class Response:
+    result: Union[List[SuccessResposne], ErrorResponse]
+
+
 class SurrealEngine(HTTPEngine):
 
     def __init__(self,
@@ -234,11 +328,20 @@ class SurrealEngine(HTTPEngine):
                  default_headers: SurrealHeaders = SurrealHeaders()):
         super().__init__(url, username, password, default_headers)
 
-    def execute(self, query: str, params: Optional[dict] = None) -> dict:
+    def execute(
+            self,
+            query: str,
+            params: Optional[dict] = None
+    ) -> Union[SuccessResposne, ErrorResponse]:
         with log.catch(onerror=log.error,
                        message="Error executing query",
                        default=dict()):
-            return self.post('/sql', data=query).json()  # type: ignore
+            result = self.post('/sql', data=query).json()  # type: ignore
+            if isinstance(result, dict):
+                return ErrorResponse(**result)
+            elif isinstance(result, list):
+                return SuccessResposne(**result[0])  # type: ignore
+            return result
         raise RuntimeError("Error executing query")
 
 
