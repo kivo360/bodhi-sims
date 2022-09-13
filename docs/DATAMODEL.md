@@ -6,3 +6,4 @@ I need to deeply consider the data model for the environment system. There are c
 Need latest information for each group sorted by instrument, and ordered by timestamp. I could try thinking about how to do this using pandas first, then try out a few different queries.
 
 
+**NOTE: Going to ignore database interactions for a bit. Truthfully, it gets in the way of creating the simulation software iteratively.**
