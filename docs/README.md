@@ -679,7 +679,6 @@ results = executor.find(triangle)
 
 
 
-
 ## Helpful Projects:
 
 `Hazelcast` will shortcut the creation of the distributed cache system. Can't mess with it immediately due to overhead.
@@ -688,3 +687,15 @@ results = executor.find(triangle)
 2. https://hazelcast.readthedocs.io/en/stable/api/proxy/cp/atomic_reference.html
 3. https://arrow.apache.org/docs/python/memory.html
 4. https://arrow.apache.org/docs/python/plasma.html#using-plasma-with-huge-pages
+
+
+
+# Temporary Revamp:
+
+To get some inertia going on this project to continue it would be good to start by copying existing code (mesa), then merge in the changes you've made into the new code. 
+
+## Why?:
+
+Using `SurrealDB` is slow. The slowest part to the library is the HTTP requests. It takes a total of 0.3 seconds per call. While something works, it's not working very well. I also haven't finished the layout of agents interacting with an environment. Mesa already has many of these features. It also has some other important aspects built in.
+
+It's possible to reach major scale using their paradigm and raylib.
